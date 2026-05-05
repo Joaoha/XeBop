@@ -155,11 +155,15 @@ def find_employee(query: str, directory: list[Employee]) -> Optional[Employee]:
     return None
 
 
+DEFAULT_OPENING_LINE = "Hi there! Welcome. What's your name?"
+
+
 @dataclass
 class GreeterFlow:
     directory: list[Employee]
     notifier: Notifier
     event_logger: EventLogger = field(default=_noop_logger)
+    opening_line: str = DEFAULT_OPENING_LINE
     state: FlowState = FlowState.GREET
     visitor_name: str = ""
     host: Optional[Employee] = None
@@ -169,7 +173,7 @@ class GreeterFlow:
         """Visitor was detected approaching. Open the conversation."""
         self.state = FlowState.AWAITING_VISITOR_NAME
         return FlowResult(
-            say="Hi there! Welcome. What's your name?",
+            say=self.opening_line,
             state=self.state,
         )
 

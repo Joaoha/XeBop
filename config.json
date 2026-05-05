@@ -8,6 +8,16 @@
   "system_prompt_extras": "",
   "input_device": null,
   "input_sample_rate": 44100,
+  "branding": {
+    "agent_name": "XeBop",
+    "opening_line": "Hi there! Welcome. What's your name?",
+    "wake_word": {
+      "model_path": "./wakeword.onnx",
+      "threshold": 0.5
+    },
+    "faces_dir": "faces",
+    "voice_model": "piper/en_GB-semaine-medium.onnx"
+  },
   "notify": {
     "slack_webhook_url": null
   },

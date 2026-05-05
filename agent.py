@@ -58,14 +58,24 @@ from greeter.visitor_log import VisitorLog
 CONFIG_FILE = "config.json"
 MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
-WAKE_WORD_MODEL = "./wakeword.onnx"
-WAKE_WORD_THRESHOLD = 0.5
 GREETER_PERSONA_FILE = "prompts/greeter_persona.txt"
 EMPLOYEES_FILE = "employees.json"
 ON_THEIR_WAY_DISPLAY_S = 3.0
 
 # HARDWARE SETTINGS
 INPUT_DEVICE_NAME = None
+
+# Branding defaults — swappable via config.json "branding" block.
+DEFAULT_BRANDING = {
+    "agent_name": "XeBop",
+    "opening_line": "Hi there! Welcome. What's your name?",
+    "wake_word": {
+        "model_path": "./wakeword.onnx",
+        "threshold": 0.5,
+    },
+    "faces_dir": "faces",
+    "voice_model": "piper/en_GB-semaine-medium.onnx",
+}
 
 DEFAULT_CONFIG = {
     "text_model": "gemma3:1b",
@@ -75,8 +85,21 @@ DEFAULT_CONFIG = {
     "camera_rotation": 0,
     "system_prompt_extras": "",
     "input_device": None,
-    "input_sample_rate": None
+    "input_sample_rate": None,
+    "branding": DEFAULT_BRANDING,
 }
+
+
+def _branding(config):
+    user = (config.get("branding") or {})
+    merged = {**DEFAULT_BRANDING, **user}
+    merged["wake_word"] = {**DEFAULT_BRANDING["wake_word"], **(user.get("wake_word") or {})}
+    if "voice_model" not in (config.get("branding") or {}) and "voice_model" in config:
+        merged["voice_model"] = config["voice_model"]
+    return merged
+
+
+BRANDING = _branding({})  # placeholder, reset after CURRENT_CONFIG is built below
 
 # LLM SETTINGS
 OLLAMA_OPTIONS = {
@@ -101,6 +124,9 @@ def load_config():
 CURRENT_CONFIG = load_config()
 TEXT_MODEL = CURRENT_CONFIG["text_model"]
 VISION_MODEL = CURRENT_CONFIG["vision_model"]
+BRANDING = _branding(CURRENT_CONFIG)
+WAKE_WORD_MODEL = BRANDING["wake_word"]["model_path"]
+WAKE_WORD_THRESHOLD = float(BRANDING["wake_word"]["threshold"])
 
 def resolve_input_device(config):
     requested = config.get("input_device")
@@ -372,7 +398,7 @@ class BotGUI:
             self.set_state(BotStates.IDLE, "Interrupted.")
 
     def load_animations(self):
-        base_path = "faces"
+        base_path = BRANDING.get("faces_dir", "faces")
         states = ["idle", "listening", "thinking", "speaking", "error", "capturing", "warmup"] 
         for state in states:
             folder = os.path.join(base_path, state)
@@ -480,6 +506,7 @@ class BotGUI:
             directory=self.directory,
             notifier=self.notifier,
             event_logger=self.visitor_log.record,
+            opening_line=BRANDING.get("opening_line"),
         )
 
         opening = flow.start()
@@ -888,7 +915,7 @@ class BotGUI:
         if not clean.strip(): return
         
         print(f"[PIPER SPEAKING] '{clean}'", flush=True)
-        voice_model = CURRENT_CONFIG.get("voice_model", "piper/en_GB-semaine-medium.onnx")
+        voice_model = BRANDING.get("voice_model") or CURRENT_CONFIG.get("voice_model", "piper/en_GB-semaine-medium.onnx")
         
         try:
             self.current_audio_process = subprocess.Popen(

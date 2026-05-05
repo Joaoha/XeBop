@@ -97,6 +97,21 @@ class CorrectionTests(unittest.TestCase):
         r = flow.handle("uhh")
         self.assertEqual(r.state, FlowState.AWAITING_CONFIRMATION)
 
+
+class BrandingTests(unittest.TestCase):
+    def test_custom_opening_line(self):
+        custom = "Welcome to XeBop HQ — what's your name?"
+        flow = GreeterFlow(
+            directory=_dir(),
+            notifier=FakeNotifier(),
+            opening_line=custom,
+        )
+        self.assertEqual(flow.start().say, custom)
+
+    def test_default_opening_line_unchanged(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        self.assertIn("name", flow.start().say.lower())
+
     def test_unknown_host_retries_then_gives_up(self):
         notifier = FakeNotifier()
         flow = GreeterFlow(directory=_dir(), notifier=notifier)
