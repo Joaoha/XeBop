@@ -1,0 +1,29 @@
+{
+  "$schema_version": 1,
+  "_schema": {
+    "name": "string  - canonical full name shown to visitors",
+    "role": "string  - human-readable job title",
+    "alt_names": "string[] - nicknames, last-name-only, common misspellings; matched case-insensitively",
+    "host_channel_id": "string - opaque id of the channel/DM used to notify them (e.g. Slack channel id, email alias). Never spoken to visitors."
+  },
+  "employees": [
+    {
+      "name": "Joao Hage",
+      "role": "Founding Engineer",
+      "alt_names": ["joao", "hage", "jo"],
+      "host_channel_id": "slack:U01JOAO"
+    },
+    {
+      "name": "Bren Polly",
+      "role": "Hardware Lead",
+      "alt_names": ["bren", "brendan", "polly"],
+      "host_channel_id": "slack:U02BREN"
+    },
+    {
+      "name": "Sam Rivera",
+      "role": "Office Manager",
+      "alt_names": ["sam", "samantha", "rivera"],
+      "host_channel_id": "email:sam@example.com"
+    }
+  ]
+}
