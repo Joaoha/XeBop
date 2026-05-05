@@ -59,6 +59,14 @@ class FlowResult:
 # Notifier is the side-effect dependency we mock in tests.
 Notifier = Callable[[Employee, str], None]
 
+# EventLogger receives terminal-state events for visitor-log writes.
+# (visitor_name, host_or_none, outcome)
+EventLogger = Callable[[str, Optional["Employee"], str], None]
+
+
+def _noop_logger(visitor_name: str, host: Optional["Employee"], outcome: str) -> None:
+    return None
+
 
 def load_employees(path: str | Path) -> list[Employee]:
     data = json.loads(Path(path).read_text())
@@ -151,6 +159,7 @@ def find_employee(query: str, directory: list[Employee]) -> Optional[Employee]:
 class GreeterFlow:
     directory: list[Employee]
     notifier: Notifier
+    event_logger: EventLogger = field(default=_noop_logger)
     state: FlowState = FlowState.GREET
     visitor_name: str = ""
     host: Optional[Employee] = None
@@ -203,6 +212,7 @@ class GreeterFlow:
             self._retry += 1
             if self._retry >= 3:
                 self.state = FlowState.DONE
+                self.event_logger(self.visitor_name, None, "unknown_host")
                 return FlowResult(
                     say="I can't find that name. Please ring the doorbell for a human.",
                     state=self.state,
@@ -227,6 +237,7 @@ class GreeterFlow:
             message = f"{self.visitor_name} is in the lobby to see you."
             self.notifier(self.host, message)
             self.state = FlowState.DONE
+            self.event_logger(self.visitor_name, self.host, "notified")
             return FlowResult(
                 say=f"Great. I'm letting {self.host.name} know — they're on their way.",
                 state=self.state,
