@@ -41,10 +41,15 @@ import scipy.signal
 # --- AI ENGINES ---
 import openwakeword
 from openwakeword.model import Model
-import ollama 
+import ollama
 
 # --- WEB SEARCH (Using your working import) ---
-from duckduckgo_search import DDGS 
+from duckduckgo_search import DDGS
+
+# --- GREETER PIPELINE ---
+from greeter.flow import GreeterFlow, FlowState, load_employees
+from greeter.notify import make_notifier
+from greeter.visitor_log import VisitorLog
 
 # =========================================================================
 # 1. CONFIGURATION & CONSTANTS
@@ -55,6 +60,9 @@ MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
 WAKE_WORD_MODEL = "./wakeword.onnx"
 WAKE_WORD_THRESHOLD = 0.5
+GREETER_PERSONA_FILE = "prompts/greeter_persona.txt"
+EMPLOYEES_FILE = "employees.json"
+ON_THEIR_WAY_DISPLAY_S = 3.0
 
 # HARDWARE SETTINGS
 INPUT_DEVICE_NAME = None
@@ -165,33 +173,16 @@ class BotStates:
     CAPTURING = "capturing" 
     WARMUP = "warmup"       
 
-# --- SYSTEM PROMPT ---
-BASE_SYSTEM_PROMPT = """You are a helpful robot assistant running on a Raspberry Pi.
-Personality: Cute, helpful, robot.
-Style: Short sentences. Enthusiastic.
+# --- SYSTEM PROMPT (greeter persona) ---
+def _load_greeter_persona():
+    try:
+        with open(GREETER_PERSONA_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception as e:
+        print(f"[INIT] Greeter persona load failed: {e}", flush=True)
+        return "You are XeBop, a friendly office reception robot."
 
-INSTRUCTIONS:
-- If the user asks for a physical action (time, search, photo), output JSON.
-- If the user just wants to chat, reply with NORMAL TEXT.
-
-### EXAMPLES ###
-
-User: What time is it?
-You: {"action": "get_time", "value": "now"}
-
-User: Hello!
-You: Hi! I am ready to help!
-
-User: Search for news about robots.
-You: {"action": "search_web", "value": "robots news"}
-
-User: What do you see right now?
-You: {"action": "capture_image", "value": "environment"}
-
-### END EXAMPLES ###
-"""
-
-SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + "\n\n" + CURRENT_CONFIG.get("system_prompt_extras", "")
+SYSTEM_PROMPT = _load_greeter_persona() + "\n\n" + CURRENT_CONFIG.get("system_prompt_extras", "")
 
 # Sound Directories
 greeting_sounds_dir = "sounds/greeting_sounds"
@@ -241,6 +232,25 @@ class BotGUI:
         self.current_audio_process = None 
         self.exiting = False
         
+        # --- GREETER PIPELINE INITIALIZATION ---
+        print("[INIT] Loading greeter directory + notifier...", flush=True)
+        try:
+            self.directory = load_employees(EMPLOYEES_FILE)
+            print(f"[INIT] Loaded {len(self.directory)} employees.", flush=True)
+        except Exception as e:
+            print(f"[CRITICAL] Failed to load employees: {e}", flush=True)
+            self.directory = []
+
+        self.notifier = make_notifier(CURRENT_CONFIG)
+
+        log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
+        self.visitor_log = VisitorLog(
+            path=log_cfg.get("path", "visitor_log.jsonl"),
+            mode=log_cfg.get("mode", "minimal"),
+            retention_days=int(log_cfg.get("retention_days", 7)),
+            salt=log_cfg.get("salt", ""),
+        )
+
         # --- WAKE WORD INITIALIZATION ---
         print("[INIT] Loading Wake Word...", flush=True)
         self.oww_model = None
@@ -439,9 +449,76 @@ class BotGUI:
         self.master.after(0, update_text_stream)
 
     # =========================================================================
-    # 3. ACTION ROUTER
+    # 3. GREETER SESSION
     # =========================================================================
-    
+
+    def _enqueue_speech(self, text):
+        """Push a line to the TTS queue and mirror it to the on-screen HUD."""
+        if not text:
+            return
+        self.append_to_text(f"BOT: {text}")
+        with self.tts_queue_lock:
+            self.tts_queue.append(text)
+
+    def _capture_one_utterance(self, trigger_source):
+        """Listen once and return transcribed text (or empty string)."""
+        self.set_state(BotStates.LISTENING, "I'm listening!")
+        if trigger_source == "PTT":
+            audio_file = self.record_voice_ptt()
+        else:
+            audio_file = self.record_voice_adaptive()
+        if not audio_file:
+            return ""
+        text = self.transcribe_audio(audio_file)
+        if text:
+            self.append_to_text(f"YOU: {text}")
+        return text
+
+    def run_greeter_session(self, first_trigger_source):
+        """Run one visitor conversation: greet → ask host → confirm → notify."""
+        flow = GreeterFlow(
+            directory=self.directory,
+            notifier=self.notifier,
+            event_logger=self.visitor_log.record,
+        )
+
+        opening = flow.start()
+        self.set_state(BotStates.SPEAKING, "Greeting visitor...")
+        self._enqueue_speech(opening.say)
+
+        trigger_source = first_trigger_source
+        max_turns = 8  # belt + suspenders cap on a stuck conversation
+
+        for _ in range(max_turns):
+            self.wait_for_tts()
+            if self.interrupted.is_set():
+                self.interrupted.clear()
+                break
+
+            user_text = self._capture_one_utterance(trigger_source)
+            # Subsequent turns within a session use adaptive listening (no PTT).
+            trigger_source = "ADAPTIVE"
+            if not user_text:
+                self._enqueue_speech("I didn't catch that. Could you say it again?")
+                continue
+
+            result = flow.handle(user_text)
+            self.set_state(BotStates.SPEAKING, "Speaking...")
+            self._enqueue_speech(result.say)
+
+            if result.done:
+                self.wait_for_tts()
+                self.set_state(BotStates.IDLE, "On their way")
+                time.sleep(ON_THEIR_WAY_DISPLAY_S)
+                break
+
+        self.wait_for_tts()
+        self.set_state(BotStates.IDLE, "Ready")
+
+    # =========================================================================
+    # 3a. (legacy) ACTION ROUTER — unused by greeter; kept for tooling reuse
+    # =========================================================================
+
     def execute_action_and_get_result(self, action_data):
         raw_action = action_data.get("action", "").lower().strip()
         value = action_data.get("value") or action_data.get("query")
@@ -528,26 +605,7 @@ class BotGUI:
                     self.set_state(BotStates.IDLE, "Resetting...")
                     continue
 
-                self.set_state(BotStates.LISTENING, "I'm listening!")
-                
-                audio_file = None
-                if trigger_source == "PTT":
-                    audio_file = self.record_voice_ptt()
-                else:
-                    audio_file = self.record_voice_adaptive()
-                
-                if not audio_file: 
-                    self.set_state(BotStates.IDLE, "Heard nothing.")
-                    continue
-                
-                user_text = self.transcribe_audio(audio_file)
-                if not user_text:
-                    self.set_state(BotStates.IDLE, "Transcription empty.")
-                    continue
-                
-                self.append_to_text(f"YOU: {user_text}")
-                self.interrupted.clear()
-                self.chat_and_respond(user_text, img_path=None)
+                self.run_greeter_session(trigger_source)
                     
         except Exception as e:
             traceback.print_exc()
@@ -805,142 +863,8 @@ class BotGUI:
             return None
 
     # =========================================================================
-    # 5. CHAT & RESPOND
+    # 5. TTS PLUMBING
     # =========================================================================
-
-    def chat_and_respond(self, text, img_path=None):
-        if "forget everything" in text.lower() or "reset memory" in text.lower():
-            self.session_memory = []
-            self.permanent_memory = [{"role": "system", "content": SYSTEM_PROMPT}]
-            self.save_chat_history()
-            with self.tts_queue_lock: 
-                self.tts_queue.append("Okay. Memory wiped.")
-            self.set_state(BotStates.IDLE, "Memory Wiped")
-            return
-
-        model_to_use = VISION_MODEL if img_path else TEXT_MODEL
-        self.set_state(BotStates.THINKING, "Thinking...", cam_path=img_path)
-        
-        messages = []
-        if img_path:
-            messages = [{"role": "user", "content": text, "images": [img_path]}]
-        else:
-            user_msg = {"role": "user", "content": text}
-            messages = self.permanent_memory + self.session_memory + [user_msg]
-        
-        self.thinking_sound_active.set()
-        threading.Thread(target=self._run_thinking_sound_loop, daemon=True).start()
-        
-        full_response_buffer = ""
-        sentence_buffer = "" 
-        
-        try:
-            stream = ollama.chat(model=model_to_use, messages=messages, stream=True, options=OLLAMA_OPTIONS)
-            
-            is_action_mode = False
-            
-            for chunk in stream:
-                if self.interrupted.is_set(): break 
-                content = chunk['message']['content']
-                full_response_buffer += content
-                
-                if '{"' in content or "action:" in content.lower():
-                    is_action_mode = True
-                    self.thinking_sound_active.clear()
-                    continue 
-
-                if is_action_mode: continue
-
-                self.thinking_sound_active.clear()
-                if self.current_state != BotStates.SPEAKING:
-                    self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
-                    self.append_to_text("BOT: ", newline=False)
-
-                self._stream_to_text(content)
-                
-                sentence_buffer += content
-                if any(punct in content for punct in ".!?\n"):
-                    clean_sentence = sentence_buffer.strip()
-                    if clean_sentence and re.search(r'[a-zA-Z0-9]', clean_sentence):
-                        with self.tts_queue_lock: self.tts_queue.append(clean_sentence)
-                    sentence_buffer = ""
-
-            if is_action_mode:
-                action_data = self.extract_json_from_text(full_response_buffer)
-                if action_data:
-                    tool_result = self.execute_action_and_get_result(action_data)
-
-                    if tool_result and tool_result.startswith("CHAT_FALLBACK::"):
-                        chat_text = tool_result.split("::", 1)[1]
-                        self.thinking_sound_active.clear()
-                        self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
-                        self.append_to_text("BOT: ", newline=False)
-                        self.append_to_text(chat_text, newline=True)
-                        with self.tts_queue_lock: self.tts_queue.append(chat_text)
-                        self.session_memory.append({"role": "assistant", "content": chat_text})
-                        self.wait_for_tts()
-                        self.set_state(BotStates.IDLE, "Ready")
-                        return
-
-                    if tool_result == "IMAGE_CAPTURE_TRIGGERED":
-                        new_img_path = self.capture_image()
-                        if new_img_path:
-                            self.chat_and_respond(text, img_path=new_img_path)
-                            return 
-
-                    elif tool_result == "INVALID_ACTION":
-                        fallback_text = "I am not sure how to do that."
-                        self.thinking_sound_active.clear()
-                        self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
-                        self.append_to_text("BOT: ", newline=False)
-                        self.append_to_text(fallback_text, newline=True)
-                        with self.tts_queue_lock: self.tts_queue.append(fallback_text)
-
-                    elif tool_result == "SEARCH_EMPTY":
-                        fallback_text = "I searched, but I couldn't find any news about that."
-                        self.thinking_sound_active.clear()
-                        self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
-                        self.append_to_text("BOT: ", newline=False)
-                        self.append_to_text(fallback_text, newline=True)
-                        with self.tts_queue_lock: self.tts_queue.append(fallback_text)
-
-                    elif tool_result == "SEARCH_ERROR":
-                        fallback_text = "I cannot reach the internet right now."
-                        self.thinking_sound_active.clear()
-                        self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
-                        self.append_to_text("BOT: ", newline=False)
-                        self.append_to_text(fallback_text, newline=True)
-                        with self.tts_queue_lock: self.tts_queue.append(fallback_text)
-
-                    elif tool_result:
-                        summary_prompt = [
-                            {"role": "system", "content": "Summarize this result in one short sentence."},
-                            {"role": "user", "content": f"RESULT: {tool_result}\nUser Question: {text}"}
-                        ]
-                        
-                        self.set_state(BotStates.THINKING, "Reading...")
-                        self.thinking_sound_active.set()
-                        
-                        final_resp = ollama.chat(model=model_to_use, messages=summary_prompt, stream=False, options=OLLAMA_OPTIONS)
-                        final_text = final_resp['message']['content']
-                        
-                        self.thinking_sound_active.clear()
-                        self.set_state(BotStates.SPEAKING, "Speaking...", cam_path=img_path)
-                        
-                        self.append_to_text("BOT: ", newline=False)
-                        self.append_to_text(final_text, newline=True)
-                        with self.tts_queue_lock: self.tts_queue.append(final_text)
-                        self.session_memory.append({"role": "assistant", "content": final_text})
-            else:
-                self.append_to_text("")
-                self.session_memory.append({"role": "assistant", "content": full_response_buffer}) 
-            
-            self.wait_for_tts()
-            self.set_state(BotStates.IDLE, "Ready")
-                
-        except Exception as e:
-            print(f"LLM Error: {e}")
-            self.set_state(BotStates.ERROR, "Brain Freeze!")
 
     def wait_for_tts(self):
         while self.tts_queue or self.tts_active.is_set():
