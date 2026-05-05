@@ -19,6 +19,8 @@
     "voice_model": "piper/en_GB-semaine-medium.onnx"
   },
   "notify": {
+    "email": null,
+    "teams_webhook_url": null,
     "slack_webhook_url": null
   },
   "visitor_log": {

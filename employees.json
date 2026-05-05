@@ -11,13 +11,13 @@
       "name": "Joao Hage",
       "role": "Founding Engineer",
       "alt_names": ["joao", "hage", "jo"],
-      "host_channel_id": "slack:U01JOAO"
+      "host_channel_id": "email:joao@example.com"
     },
     {
       "name": "Bren Polly",
       "role": "Hardware Lead",
       "alt_names": ["bren", "brendan", "polly"],
-      "host_channel_id": "slack:U02BREN"
+      "host_channel_id": "teams:bren@example.com"
     },
     {
       "name": "Sam Rivera",
