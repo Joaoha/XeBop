@@ -7,8 +7,10 @@ the box; override the `branding` block in `config.json` to skin it.
 ```json
 "branding": {
   "agent_name": "XeBop",
-  "opening_line": "Hi there! Welcome. What's your name?",
+  "company_name": "XENON",
+  "opening_line": "Welcome to XENON — what's your name?",
   "wake_word": {
+    "phrase": "Hey XeBop",
     "model_path": "./wakeword.onnx",
     "threshold": 0.5
   },
@@ -16,6 +18,25 @@ the box; override the `branding` block in `config.json` to skin it.
   "voice_model": "piper/en_GB-semaine-medium.onnx"
 }
 ```
+
+## Brand reference
+
+Source of truth: https://xenon.com.au/ (XENON Systems Pty Ltd).
+
+- **Voice/tone:** professional yet approachable; technical expertise paired
+  with partnership language ("Great New Things"; "Give us your most difficult
+  IT problem"). Greeter copy should stay short, warm, and competent — not
+  cute, not corporate.
+- **Palette:** professional blues and blacks (no fixed hex from the site).
+  Use cool blues for primary, near-black for backgrounds, white for accents.
+- **Typography (face art overlays):** clean modern sans-serif.
+- **Imagery:** geometric / tech-forward. Server/HPC iconography and clean
+  workplace photography. Avoid skeuomorphic or whimsical character art.
+
+When commissioning per-state face frames, brief the artist with the above
+plus the per-state intent: idle = calm presence, listening = attentive,
+thinking = subtle motion (no spinner cliché), speaking = lively but
+controlled, error = restrained "uh oh" (not alarming).
 
 ## Wake word
 

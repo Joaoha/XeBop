@@ -10,8 +10,10 @@
   "input_sample_rate": 44100,
   "branding": {
     "agent_name": "XeBop",
-    "opening_line": "Hi there! Welcome. What's your name?",
+    "company_name": "XENON",
+    "opening_line": "Welcome to XENON — what's your name?",
     "wake_word": {
+      "phrase": "Hey XeBop",
       "model_path": "./wakeword.onnx",
       "threshold": 0.5
     },
