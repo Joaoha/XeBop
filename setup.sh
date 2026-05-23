@@ -65,6 +65,19 @@ pip install --upgrade pip
 pip install --force-reinstall --no-cache-dir sounddevice
 pip install -r requirements.txt
 
+# 5b. Build whisper.cpp + ggml-base.en model (STT engine agent.py shells out to)
+echo -e "${YELLOW}[5b] Setting up whisper.cpp...${NC}"
+if [ ! -x "./whisper.cpp/build/bin/whisper-cli" ]; then
+    if [ ! -d "whisper.cpp" ]; then
+        git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
+    fi
+    cmake -S whisper.cpp -B whisper.cpp/build -DBUILD_SHARED_LIBS=OFF
+    cmake --build whisper.cpp/build -j --config Release
+fi
+if [ ! -f "./whisper.cpp/models/ggml-base.en.bin" ]; then
+    (cd whisper.cpp && bash ./models/download-ggml-model.sh base.en)
+fi
+
 # 6. Pull AI Models
 echo -e "${YELLOW}[6/6] Checking AI Models...${NC}"
 if command -v ollama &> /dev/null; then
