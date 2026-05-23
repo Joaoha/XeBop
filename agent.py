@@ -221,13 +221,18 @@ error_sounds_dir = "sounds/error_sounds"
 # =========================================================================
 
 class BotGUI:
-    BG_WIDTH, BG_HEIGHT = 800, 480 
-    OVERLAY_WIDTH, OVERLAY_HEIGHT = 400, 300 
+    BG_WIDTH, BG_HEIGHT = 800, 480
+    OVERLAY_WIDTH, OVERLAY_HEIGHT = 400, 300
 
     def __init__(self, master):
         self.master = master
         master.title("Pi Assistant")
-        master.attributes('-fullscreen', True) 
+        master.attributes('-fullscreen', True)
+        master.update_idletasks()
+        screen_w = master.winfo_screenwidth()
+        screen_h = master.winfo_screenheight()
+        if screen_w > 0 and screen_h > 0:
+            self.BG_WIDTH, self.BG_HEIGHT = screen_w, screen_h
         master.bind('<Escape>', self.exit_fullscreen)
         
         # Inputs
@@ -406,8 +411,12 @@ class BotGUI:
             if os.path.exists(folder):
                 files = sorted([f for f in os.listdir(folder) if f.lower().endswith('.png')])
                 for f in files:
-                    img = Image.open(os.path.join(folder, f)).resize((self.BG_WIDTH, self.BG_HEIGHT))
-                    self.animations[state].append(ImageTk.PhotoImage(img))
+                    src = Image.open(os.path.join(folder, f))
+                    scale = min(self.BG_WIDTH / src.width, self.BG_HEIGHT / src.height)
+                    fw, fh = max(1, int(src.width * scale)), max(1, int(src.height * scale))
+                    canvas = Image.new('RGB', (self.BG_WIDTH, self.BG_HEIGHT), color='black')
+                    canvas.paste(src.resize((fw, fh)), ((self.BG_WIDTH - fw) // 2, (self.BG_HEIGHT - fh) // 2))
+                    self.animations[state].append(ImageTk.PhotoImage(canvas))
             if not self.animations[state]:
                 if state in self.animations.get("idle", []):
                      self.animations[state] = self.animations["idle"]

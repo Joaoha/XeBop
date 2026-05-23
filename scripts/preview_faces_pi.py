@@ -24,7 +24,11 @@ from pathlib import Path
 from PIL import Image, ImageTk
 
 STATES = ["idle", "listening", "thinking", "speaking", "capturing", "warmup", "error"]
-W, H = 800, 480
+
+
+def _fit_size(src_w: int, src_h: int, dst_w: int, dst_h: int) -> tuple[int, int]:
+    scale = min(dst_w / src_w, dst_h / src_h)
+    return max(1, int(src_w * scale)), max(1, int(src_h * scale))
 
 
 class FacePreview:
@@ -40,11 +44,15 @@ class FacePreview:
         master.bind("<Escape>", self._exit_fullscreen)
         master.bind("q", lambda _e: master.destroy())
 
+        master.update_idletasks()
+        self.screen_w = master.winfo_screenwidth()
+        self.screen_h = master.winfo_screenheight()
+
         self.label = tk.Label(master, bg="black")
-        self.label.place(x=0, y=0, width=W, height=H)
+        self.label.place(x=0, y=0, width=self.screen_w, height=self.screen_h)
 
         self.caption = tk.Label(master, fg="white", bg="black", font=("Helvetica", 24))
-        self.caption.place(x=20, y=H - 60)
+        self.caption.place(x=20, y=self.screen_h - 60)
 
         self.animations: dict[str, list[ImageTk.PhotoImage]] = {}
         self._load()
@@ -58,15 +66,20 @@ class FacePreview:
         self.master.attributes("-fullscreen", False)
 
     def _load(self) -> None:
+        sw, sh = self.screen_w, self.screen_h
         for state in STATES:
             folder = self.faces_dir / state
             frames: list[ImageTk.PhotoImage] = []
             if folder.exists():
                 for f in sorted(folder.glob("*.png")):
-                    img = Image.open(f).resize((W, H))
-                    frames.append(ImageTk.PhotoImage(img))
+                    src = Image.open(f)
+                    fw, fh = _fit_size(src.width, src.height, sw, sh)
+                    canvas = Image.new("RGB", (sw, sh), color="black")
+                    fitted = src.resize((fw, fh))
+                    canvas.paste(fitted, ((sw - fw) // 2, (sh - fh) // 2))
+                    frames.append(ImageTk.PhotoImage(canvas))
             if not frames:
-                blank = Image.new("RGB", (W, H), color="#0000FF")
+                blank = Image.new("RGB", (sw, sh), color="#0000FF")
                 frames.append(ImageTk.PhotoImage(blank))
             self.animations[state] = frames
 
