@@ -85,7 +85,7 @@ detected. Keep it under ~12 words; the rest of the conversation is driven by
 ## What is *not* yet branded
 
 - The custom wake-word `.onnx` itself (training pending voice samples / phrase decision).
-- Bespoke face animation art per state (placeholders ship; commission when art direction lands).
+- Face animation: pilot uses generic animated frames (`scripts/generate_generic_faces.py`). Branded/bespoke art is out of scope for now.
 - A brand-specific TTS voice (Piper stock voice in use).
 
 These are tracked as post-pilot polish; the configuration above lets us swap
