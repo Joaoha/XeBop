@@ -12,7 +12,10 @@ from greeter.flow import (  # noqa: E402
     GreeterFlow,
     find_employee,
     is_checkout_intent,
+    is_stop_intent,
     load_employees,
+    name_looks_uncertain,
+    reconstruct_spelled_name,
 )
 
 
@@ -42,8 +45,11 @@ class HappyPathTests(unittest.TestCase):
         self.assertIn("name", opening.say.lower())
 
         r1 = flow.handle("My name is Alice")
-        self.assertEqual(r1.state, FlowState.AWAITING_HOST_NAME)
+        self.assertEqual(r1.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertIn("Alice", r1.say)
+
+        rc = flow.handle("yes")
+        self.assertEqual(rc.state, FlowState.AWAITING_HOST_NAME)
 
         r2 = flow.handle("I'm here to see Joao")
         self.assertEqual(r2.state, FlowState.AWAITING_CONFIRMATION)
@@ -85,6 +91,7 @@ class CorrectionTests(unittest.TestCase):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
         flow.handle("Alice")
+        flow.handle("yes")          # confirm visitor name
         flow.handle("Bren")
         r = flow.handle("no")
         self.assertEqual(r.state, FlowState.AWAITING_HOST_NAME)
@@ -94,6 +101,7 @@ class CorrectionTests(unittest.TestCase):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
         flow.handle("Alice")
+        flow.handle("yes")          # confirm visitor name
         flow.handle("Joao")
         r = flow.handle("uhh")
         self.assertEqual(r.state, FlowState.AWAITING_CONFIRMATION)
@@ -118,6 +126,7 @@ class BrandingTests(unittest.TestCase):
         flow = GreeterFlow(directory=_dir(), notifier=notifier)
         flow.start()
         flow.handle("Alice")
+        flow.handle("yes")          # confirm visitor name
         r1 = flow.handle("Bob")
         self.assertEqual(r1.state, FlowState.AWAITING_HOST_NAME)
         r2 = flow.handle("Carol")
@@ -132,6 +141,63 @@ class BrandingTests(unittest.TestCase):
         flow.start()
         r = flow.handle("")
         self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME)
+
+
+class StopTests(unittest.TestCase):
+    def test_intent_detection(self):
+        for yes in ["stop", "Hey stop", "go to sleep", "never mind", "cancel", "be quiet"]:
+            self.assertTrue(is_stop_intent(yes), yes)
+        for no in ["Alice", "I'm here to see Joao", "yes", ""]:
+            self.assertFalse(is_stop_intent(no), no)
+
+    def test_stop_ends_session_from_any_state(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        flow.handle("Alice")
+        flow.handle("yes")
+        r = flow.handle("actually, stop")   # mid-conversation
+        self.assertTrue(r.done)
+        self.assertEqual(r.state, FlowState.DONE)
+        self.assertIsNone(r.notify)
+
+
+class NameCaptureTests(unittest.TestCase):
+    def test_confirm_yes_proceeds_to_host(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        r1 = flow.handle("Alice")
+        self.assertEqual(r1.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
+        self.assertIn("Alice", r1.say)
+        r2 = flow.handle("yes")
+        self.assertEqual(r2.state, FlowState.AWAITING_HOST_NAME)
+
+    def test_confirm_no_then_spell(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        flow.handle("Alice")
+        r = flow.handle("no")
+        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
+        r2 = flow.handle("A L I C E")
+        self.assertEqual(r2.state, FlowState.AWAITING_HOST_NAME)
+        self.assertEqual(flow.visitor_name, "Alice")
+
+    def test_uncertain_name_skips_to_spelling(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        r = flow.handle("Aalsiisson the third esquire")  # >3 words -> uncertain
+        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
+
+    def test_name_uncertainty_heuristic(self):
+        self.assertFalse(name_looks_uncertain("Alice"))
+        self.assertFalse(name_looks_uncertain("Mary-Jane"))
+        self.assertTrue(name_looks_uncertain("A"))
+        self.assertTrue(name_looks_uncertain("Al1ce"))
+        self.assertTrue(name_looks_uncertain("a b c d e"))
+
+    def test_reconstruct_spelled(self):
+        self.assertEqual(reconstruct_spelled_name("A L I C E"), "Alice")
+        self.assertEqual(reconstruct_spelled_name("A-L-I-C-E"), "Alice")
+        self.assertEqual(reconstruct_spelled_name("Bob"), "Bob")
 
 
 class CheckoutTests(unittest.TestCase):

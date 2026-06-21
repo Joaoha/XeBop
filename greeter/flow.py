@@ -21,6 +21,8 @@ from typing import Callable, Iterable, Optional
 class FlowState(str, Enum):
     GREET = "greet"
     AWAITING_VISITOR_NAME = "awaiting_visitor_name"
+    AWAITING_VISITOR_NAME_CONFIRM = "awaiting_visitor_name_confirm"
+    AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
     AWAITING_HOST_NAME = "awaiting_host_name"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
     AWAITING_CHECKOUT_NAME = "awaiting_checkout_name"
@@ -197,6 +199,8 @@ DEFAULT_OPENING_LINE = "Hi there! Welcome. What's your name?"
 # custom phrase safely fall back to the default for that key.
 DEFAULT_PHRASES = {
     "didnt_catch_name": "Sorry, I didn't catch your name. Could you say it again?",
+    "visitor_name_confirm": "I heard {name} — is that right?",
+    "spell_name": "Could you spell your name for me, one letter at a time?",
     "ask_host": "Nice to meet you, {name}. Who are you here to see?",
     "host_unknown_retry": "I don't have anyone by that name. Could you spell it?",
     "host_unknown_giveup": "I can't find that name. Please ring the doorbell for a human.",
@@ -212,6 +216,8 @@ DEFAULT_PHRASES = {
     "checkout_done": "Thanks {name}, you're all signed out. Take care!",
     "checkout_not_found": "Hmm, I don't see you checked in. What name did you check in under?",
     "checkout_not_found_giveup": "I can't find your check-in — no worries, have a great day!",
+    # Visitor cancelled / "go to sleep":
+    "stopped": "No problem — say my name whenever you need me.",
     # Notification SENT TO THE HOST when their visitor leaves (not spoken):
     "exit_notice": "{visitor} has checked out and left the building.",
 }
@@ -234,6 +240,49 @@ def is_checkout_intent(text: str) -> bool:
     if any(p in norm for p in _CHECKOUT_PHRASES):
         return True
     return bool(set(norm.split()) & _CHECKOUT_WORDS)
+
+
+# Cancel / "go to sleep" — recognized at any point in a session.
+_STOP_PHRASES = ("go to sleep", "never mind", "forget it", "go away", "shut down", "shut up")
+_STOP_WORDS = {"stop", "cancel", "sleep", "quiet"}
+
+
+def is_stop_intent(text: str) -> bool:
+    norm = _normalize(text)
+    if not norm:
+        return False
+    if any(p in norm for p in _STOP_PHRASES):
+        return True
+    return bool(set(norm.split()) & _STOP_WORDS)
+
+
+def name_looks_uncertain(name: str) -> bool:
+    """Heuristic: does this transcribed name look garbled enough to spell out?"""
+    n = (name or "").strip()
+    if len(n) < 2 or len(n) > 30:
+        return True
+    if re.search(r"[0-9]", n):
+        return True
+    if re.search(r"[^A-Za-z .'\-]", n):  # letters, space, period, apostrophe, hyphen only
+        return True
+    return len(n.split()) > 3
+
+
+def reconstruct_spelled_name(text: str) -> str:
+    """Rebuild a name from a spelled-out utterance.
+
+    Handles "A L I C E", "A-L-I-C-E", or a plain spoken word. Whisper can't
+    reliably transcribe phonetic letter names ("ay, el, eye, ..."), so this is
+    best-effort: prefer joined single letters, else fall back to the raw word.
+    """
+    raw = (text or "").strip()
+    tokens = re.findall(r"[A-Za-z]+", raw)
+    singles = [t for t in tokens if len(t) == 1]
+    if len(singles) >= 2:
+        name = "".join(singles)
+    else:
+        name = re.sub(r"[^A-Za-z]", "", raw)
+    return name.capitalize() if name else ""
 
 
 def resolve_phrase(phrases, key, **kw):
@@ -295,8 +344,16 @@ class GreeterFlow:
     def handle(self, text: str) -> FlowResult:
         """Advance the flow with one turn of recognized speech."""
         text = (text or "").strip()
+        # "Hey XeBop, stop / go to sleep" — bail out from anywhere in a session.
+        if is_stop_intent(text):
+            self.state = FlowState.DONE
+            return FlowResult(say=self._say("stopped"), state=self.state, done=True)
         if self.state == FlowState.AWAITING_VISITOR_NAME:
             return self._on_visitor_name(text)
+        if self.state == FlowState.AWAITING_VISITOR_NAME_CONFIRM:
+            return self._on_visitor_name_confirm(text)
+        if self.state == FlowState.AWAITING_VISITOR_NAME_SPELL:
+            return self._on_visitor_name_spell(text)
         if self.state == FlowState.AWAITING_HOST_NAME:
             return self._on_host_name(text)
         if self.state == FlowState.AWAITING_CONFIRMATION:
@@ -325,11 +382,29 @@ class GreeterFlow:
                 state=self.state,
             )
         self.visitor_name = name
+        # A garbled-looking name skips straight to spelling; otherwise confirm it.
+        if name_looks_uncertain(name):
+            self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
+            return FlowResult(say=self._say("spell_name"), state=self.state)
+        self.state = FlowState.AWAITING_VISITOR_NAME_CONFIRM
+        return FlowResult(say=self._say("visitor_name_confirm"), state=self.state)
+
+    def _on_visitor_name_confirm(self, text: str) -> FlowResult:
+        if _is_yes(text):
+            self.state = FlowState.AWAITING_HOST_NAME
+            return FlowResult(say=self._say("ask_host"), state=self.state)
+        if _is_no(text):
+            self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
+            return FlowResult(say=self._say("spell_name"), state=self.state)
+        return FlowResult(say=self._say("confirm_unclear"), state=self.state)
+
+    def _on_visitor_name_spell(self, text: str) -> FlowResult:
+        name = reconstruct_spelled_name(text)
+        if not name:
+            return FlowResult(say=self._say("didnt_catch_name"), state=self.state)
+        self.visitor_name = name
         self.state = FlowState.AWAITING_HOST_NAME
-        return FlowResult(
-            say=self._say("ask_host"),
-            state=self.state,
-        )
+        return FlowResult(say=self._say("ask_host"), state=self.state)
 
     def _on_host_name(self, text: str) -> FlowResult:
         query = extract_host_query(text)

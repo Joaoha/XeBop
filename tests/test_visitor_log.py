@@ -134,8 +134,9 @@ class FlowIntegrationTests(unittest.TestCase):
         )
         flow.start()
         flow.handle("Alice")
+        flow.handle("yes")          # confirm visitor name
         flow.handle("Joao")
-        flow.handle("yes")
+        flow.handle("yes")          # confirm host pairing
         self.assertEqual(checkins, [("Alice", "Joao Hage")])
 
     def test_event_logger_invoked_on_unknown_host(self):
@@ -147,6 +148,7 @@ class FlowIntegrationTests(unittest.TestCase):
         )
         flow.start()
         flow.handle("Alice")
+        flow.handle("yes")          # confirm visitor name
         flow.handle("Bob")
         flow.handle("Carol")
         flow.handle("Dan")

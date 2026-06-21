@@ -65,7 +65,8 @@ class FlowWithCustomPhrasesTests(unittest.TestCase):
         }
         flow = GreeterFlow(directory=_dir(), notifier=lambda e, m: None, phrases=phrases)
         flow.start()
-        r1 = flow.handle("Alice")
+        flow.handle("Alice")
+        r1 = flow.handle("yes")     # confirm name -> ask_host
         self.assertEqual(r1.say, "Hey Alice! Who do you want?")
         r2 = flow.handle("Joao")
         self.assertEqual(r2.say, "So Alice wants Joao Hage, ya?")
@@ -74,7 +75,8 @@ class FlowWithCustomPhrasesTests(unittest.TestCase):
     def test_default_phrases_unchanged_without_override(self):
         flow = GreeterFlow(directory=_dir(), notifier=lambda e, m: None)
         flow.start()
-        r1 = flow.handle("Alice")
+        flow.handle("Alice")
+        r1 = flow.handle("yes")     # confirm name -> ask_host
         self.assertEqual(r1.say, "Nice to meet you, Alice. Who are you here to see?")
 
 

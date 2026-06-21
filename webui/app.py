@@ -42,6 +42,8 @@ HOST_CHANNEL_PREFIXES = ("email", "teams", "slack")
 # Greeter phrase slots shown on the Phrases tab: (config key, label, placeholders).
 PHRASE_META = [
     ("didnt_catch_name", "Didn't catch the visitor's name", []),
+    ("visitor_name_confirm", "Confirm the heard name", ["name"]),
+    ("spell_name", "Ask the visitor to spell their name", []),
     ("ask_host", "Ask who they're visiting", ["name"]),
     ("host_unknown_retry", "Host not found — ask again", []),
     ("host_unknown_giveup", "Host not found — give up", []),
@@ -51,6 +53,7 @@ PHRASE_META = [
     ("confirm_unclear", "Yes/no answer not understood", []),
     ("already_on_way", "Repeat / already on the way", []),
     ("didnt_catch", "Didn't catch speech (general)", []),
+    ("stopped", "Visitor said stop / go to sleep", []),
 ]
 
 
