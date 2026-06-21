@@ -210,6 +210,48 @@ class NameCaptureTests(unittest.TestCase):
         )
 
 
+class ReturningVisitorTests(unittest.TestCase):
+    def _flow(self, closed):
+        visit = {"visit_id": "v1", "host": "Joao Hage", "host_channel_id": "slack:U01"}
+        return GreeterFlow(
+            directory=_dir(),
+            notifier=FakeNotifier(),
+            open_visit_lookup=lambda name: visit if name.lower() == "alice" else None,
+            on_check_out=lambda v, n: closed.append((v["visit_id"], n)),
+        )
+
+    def test_already_checked_in_offers_choice(self):
+        flow = self._flow([])
+        flow.start()
+        flow.handle("Alice")
+        r = flow.handle("yes")            # confirm name
+        self.assertEqual(r.state, FlowState.AWAITING_RETURNING_CHOICE)
+        self.assertIn("Joao Hage", r.say)
+
+    def test_returning_then_checkout(self):
+        closed = []
+        flow = self._flow(closed)
+        flow.start(); flow.handle("Alice"); flow.handle("yes")
+        r = flow.handle("I'm checking out")
+        self.assertTrue(r.done)
+        self.assertEqual(closed, [("v1", "Alice")])
+
+    def test_returning_then_see_someone_new_closes_old(self):
+        closed = []
+        flow = self._flow(closed)
+        flow.start(); flow.handle("Alice"); flow.handle("yes")
+        r = flow.handle("Bren")           # new host -> closes stale visit, routes to host
+        self.assertEqual(closed, [("v1", "Alice")])
+        self.assertEqual(r.state, FlowState.AWAITING_CONFIRMATION)
+        self.assertIn("Bren Polly", r.say)
+
+    def test_not_checked_in_goes_straight_to_host(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())  # default lookup -> None
+        flow.start(); flow.handle("Alice")
+        r = flow.handle("yes")
+        self.assertEqual(r.state, FlowState.AWAITING_HOST_NAME)
+
+
 class CheckoutTests(unittest.TestCase):
     def test_intent_detection(self):
         for yes in ["I'm leaving", "checking out", "heading out", "bye", "going home"]:

@@ -618,15 +618,12 @@ class BotGUI:
     def _acknowledge(self):
         """Let the visitor know they were heard, right when they stop talking.
 
-        Prefer a pre-recorded ack chirp if present; otherwise speak a short
-        word. Runs while we transcribe so the pause doesn't feel like we're
-        still waiting for them to keep talking.
+        Always SPOKEN via TTS (the aplay path that actually works on the USB
+        DAC) — sound-effect playback goes through sounddevice, which is silent
+        on some speakers. Plays while we transcribe so the pause doesn't feel
+        like we're still waiting for them to keep talking.
         """
-        sound = self.get_random_sound(ack_sounds_dir)
-        if sound:
-            self.play_sound(sound)
-        else:
-            self._enqueue_speech(resolve_phrase(CURRENT_CONFIG.get("phrases") or {}, "ack"))
+        self._enqueue_speech(resolve_phrase(CURRENT_CONFIG.get("phrases") or {}, "ack"))
 
     def _capture_one_utterance(self, trigger_source):
         """Listen once and return transcribed text (or empty string)."""

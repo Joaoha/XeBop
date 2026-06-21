@@ -23,6 +23,7 @@ class FlowState(str, Enum):
     AWAITING_VISITOR_NAME = "awaiting_visitor_name"
     AWAITING_VISITOR_NAME_CONFIRM = "awaiting_visitor_name_confirm"
     AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
+    AWAITING_RETURNING_CHOICE = "awaiting_returning_choice"
     AWAITING_HOST_NAME = "awaiting_host_name"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
     AWAITING_CHECKOUT_NAME = "awaiting_checkout_name"
@@ -201,6 +202,7 @@ DEFAULT_PHRASES = {
     "didnt_catch_name": "Sorry, I didn't catch your name. Could you say it again?",
     "visitor_name_confirm": "I heard {name} — is that right?",
     "spell_name": "Could you spell your name for me, one letter at a time?",
+    "returning_visitor": "Welcome back, {name}! You're still checked in to see {host}. Say 'check out' to leave, or tell me who you're here to see now.",
     "ask_host": "Nice to meet you, {name}. Who are you here to see?",
     "host_unknown_retry": "I don't have anyone by that name. Could you spell it?",
     "host_unknown_giveup": "I can't find that name. Please ring the doorbell for a human.",
@@ -371,6 +373,7 @@ class GreeterFlow:
     visitor_name: str = ""
     host: Optional[Employee] = None
     _retry: int = 0
+    _open_visit: Optional[dict] = None  # set when a returning, still-checked-in visitor is found
 
     def _say(self, key: str) -> str:
         """Resolve a spoken line, filling in the current visitor/host names."""
@@ -404,6 +407,8 @@ class GreeterFlow:
             return self._on_visitor_name_confirm(text)
         if self.state == FlowState.AWAITING_VISITOR_NAME_SPELL:
             return self._on_visitor_name_spell(text)
+        if self.state == FlowState.AWAITING_RETURNING_CHOICE:
+            return self._on_returning_choice(text)
         if self.state == FlowState.AWAITING_HOST_NAME:
             return self._on_host_name(text)
         if self.state == FlowState.AWAITING_CONFIRMATION:
@@ -441,8 +446,7 @@ class GreeterFlow:
 
     def _on_visitor_name_confirm(self, text: str) -> FlowResult:
         if _is_yes(text):
-            self.state = FlowState.AWAITING_HOST_NAME
-            return FlowResult(say=self._say("ask_host"), state=self.state)
+            return self._after_name()
         if _is_no(text):
             self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
             return FlowResult(say=self._say("spell_name"), state=self.state)
@@ -453,8 +457,40 @@ class GreeterFlow:
         if not name:
             return FlowResult(say=self._say("didnt_catch_name"), state=self.state)
         self.visitor_name = name
+        return self._after_name()
+
+    def _after_name(self) -> FlowResult:
+        """Name is settled — if they're already checked in, handle that first;
+        otherwise ask who they're here to see."""
+        visit = self.open_visit_lookup(self.visitor_name)
+        if visit:
+            self._open_visit = visit
+            self.state = FlowState.AWAITING_RETURNING_CHOICE
+            return FlowResult(
+                say=resolve_phrase(
+                    self.phrases, "returning_visitor",
+                    name=self.visitor_name, visitor=self.visitor_name,
+                    host=visit.get("host") or "someone",
+                ),
+                state=self.state,
+            )
         self.state = FlowState.AWAITING_HOST_NAME
         return FlowResult(say=self._say("ask_host"), state=self.state)
+
+    def _on_returning_choice(self, text: str) -> FlowResult:
+        visit = self._open_visit
+        self._open_visit = None
+        if is_checkout_intent(text):
+            if visit is not None:
+                self.on_check_out(visit, self.visitor_name)
+            self.state = FlowState.DONE
+            return FlowResult(say=self._say("checkout_done"), state=self.state, done=True)
+        # They're here to see someone new — close the stale visit so we don't
+        # stack a second open one, then treat this turn as the host.
+        if visit is not None:
+            self.on_check_out(visit, self.visitor_name)
+        self.state = FlowState.AWAITING_HOST_NAME
+        return self._on_host_name(text)
 
     def _on_host_name(self, text: str) -> FlowResult:
         query = extract_host_query(text)

@@ -44,6 +44,7 @@ PHRASE_META = [
     ("didnt_catch_name", "Didn't catch the visitor's name", []),
     ("visitor_name_confirm", "Confirm the heard name", ["name"]),
     ("spell_name", "Ask the visitor to spell their name", []),
+    ("returning_visitor", "Already checked in (returning)", ["name", "host"]),
     ("ask_host", "Ask who they're visiting", ["name"]),
     ("host_unknown_retry", "Host not found — ask again", []),
     ("host_unknown_giveup", "Host not found — give up", []),
