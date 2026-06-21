@@ -4,6 +4,7 @@
   <button class="tab" data-tab="addressbook">Address Book</button>
   <button class="tab" data-tab="notify">Notifications</button>
   <button class="tab" data-tab="branding">Branding</button>
+  <button class="tab" data-tab="phrases">Phrases</button>
   <button class="tab" data-tab="audio">Audio</button>
   <button class="tab" data-tab="account">Account</button>
 </div>
@@ -130,6 +131,28 @@
              value="{{ branding.wake_word.threshold if branding.wake_word and branding.wake_word.threshold is not none else 0.5 }}">
     </label>
     <button class="btn-primary" type="submit">Save branding</button>
+  </form>
+</section>
+
+<!-- ============================ PHRASES ============================ -->
+<section id="phrases" class="panel card" hidden>
+  <h2>Phrases</h2>
+  <p class="muted">What the greeter says at each step. Leave a box blank to use the
+    built-in default. <strong>Put one phrase per line to add variations</strong> — the
+    greeter picks one at random each time. Placeholders like <code>{name}</code>,
+    <code>{visitor}</code>, <code>{host}</code> are filled in automatically.</p>
+  <p class="muted">The very first greeting (“opening line”) is on the
+    <a href="#" onclick="document.querySelector('.tab[data-tab=branding]').click();return false;">Branding</a> tab.</p>
+  <form method="post" action="{{ url_for('save_phrases') }}">
+    {% for f in phrase_fields %}
+    <label>{{ f.label }}
+      {% if f.placeholders %}<span class="muted">— placeholders:
+        {% for p in f.placeholders %}<code>{{ '{' ~ p ~ '}' }}</code>{% if not loop.last %} {% endif %}{% endfor %}
+      </span>{% endif %}
+      <textarea name="{{ f.key }}" rows="2" placeholder="{{ f.default }}">{{ f.text }}</textarea>
+    </label>
+    {% endfor %}
+    <button class="btn-primary" type="submit">Save phrases</button>
   </form>
 </section>
 

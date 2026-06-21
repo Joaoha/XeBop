@@ -50,7 +50,7 @@ from duckduckgo_search import DDGS
 # --- GREETER PIPELINE ---
 from greeter.config import load_layered_config
 from greeter.directory import resolve_directory_path
-from greeter.flow import GreeterFlow, FlowState, load_employees
+from greeter.flow import GreeterFlow, FlowState, load_employees, resolve_phrase
 from greeter.notify import make_notifier
 from greeter.visitor_log import VisitorLog
 
@@ -92,6 +92,7 @@ DEFAULT_CONFIG = {
     "input_sample_rate": None,
     "output_device": None,
     "aplay_device": None,
+    "phrases": {},  # overrides for greeter lines; see greeter.flow.DEFAULT_PHRASES
     "directory": {
         "source": "local",          # "local" (employees.json) | "m365" (synced cache)
         "m365": {
@@ -564,6 +565,7 @@ class BotGUI:
             notifier=self.notifier,
             event_logger=self.visitor_log.record,
             opening_line=BRANDING.get("opening_line"),
+            phrases=CURRENT_CONFIG.get("phrases") or {},
         )
 
         opening = flow.start()
@@ -583,7 +585,7 @@ class BotGUI:
             # Subsequent turns within a session use adaptive listening (no PTT).
             trigger_source = "ADAPTIVE"
             if not user_text:
-                self._enqueue_speech("I didn't catch that. Could you say it again?")
+                self._enqueue_speech(resolve_phrase(CURRENT_CONFIG.get("phrases") or {}, "didnt_catch"))
                 continue
 
             result = flow.handle(user_text)

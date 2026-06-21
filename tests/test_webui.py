@@ -70,6 +70,20 @@ class WebUITests(unittest.TestCase):
             self.assertNotIn("password", config_after["notify"]["email"])
             self.assertEqual(secrets_after["notify"]["email"]["password"], "s3cret")
 
+    def test_save_phrases_writes_config_and_handles_variants(self):
+        import json as _json
+        with self.app.test_client() as c:
+            c.post("/login", data={"password": "hunter2", "confirm": "hunter2"})
+            c.post("/save/phrases", data={
+                "confirm_no": "Oops, who again?",                 # single -> string
+                "ask_host": "Who for?\nWho are you seeing?",       # two lines -> list
+                "host_unknown_retry": "   ",                       # blank -> omitted (default)
+            })
+            phrases = _json.loads(self.cfg.read_text())["phrases"]
+            self.assertEqual(phrases["confirm_no"], "Oops, who again?")
+            self.assertEqual(phrases["ask_host"], ["Who for?", "Who are you seeing?"])
+            self.assertNotIn("host_unknown_retry", phrases)
+
     def test_save_endpoints_require_login(self):
         with self.app.test_client() as c:
             # configure a password but don't log in this client session

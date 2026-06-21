@@ -10,6 +10,7 @@ States mirror the persona prompt's contract.
 from __future__ import annotations
 
 import json
+import random
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -158,16 +159,73 @@ def find_employee(query: str, directory: list[Employee]) -> Optional[Employee]:
 DEFAULT_OPENING_LINE = "Hi there! Welcome. What's your name?"
 
 
+# Every line the greeter speaks during the flow, keyed by situation. These are
+# the defaults; config.json's "phrases" block (edited in the settings web UI)
+# overrides any of them. A value may be a single string OR a list of strings —
+# a list picks one at random each time, so you can add variety.
+#
+# Placeholders available (Python str.format): {name} / {visitor} (the visitor's
+# name) and {host} (the matched employee's name). Unknown placeholders in a
+# custom phrase safely fall back to the default for that key.
+DEFAULT_PHRASES = {
+    "didnt_catch_name": "Sorry, I didn't catch your name. Could you say it again?",
+    "ask_host": "Nice to meet you, {name}. Who are you here to see?",
+    "host_unknown_retry": "I don't have anyone by that name. Could you spell it?",
+    "host_unknown_giveup": "I can't find that name. Please ring the doorbell for a human.",
+    "confirm_host": "{visitor} here to see {host}, correct?",
+    "notified_host": "Great. I'm letting {host} know — they're on their way.",
+    "confirm_no": "My mistake. Who are you here to see?",
+    "confirm_unclear": "Sorry — yes or no? Did I get the name right?",
+    "already_on_way": "They're on their way. Please have a seat.",
+    # Spoken by agent.py when a turn produced no transcription:
+    "didnt_catch": "I didn't catch that. Could you say it again?",
+}
+
+
+def resolve_phrase(phrases, key, **kw):
+    """Return a ready-to-speak line for ``key``, applying any config override.
+
+    ``phrases`` is the config "phrases" block (may be empty/None). A value can
+    be a string or a list of strings (one picked at random). Falls back to
+    DEFAULT_PHRASES when missing/blank or if a custom template references an
+    unknown placeholder.
+    """
+    value = (phrases or {}).get(key)
+    if isinstance(value, (list, tuple)):
+        variants = [v for v in value if isinstance(v, str) and v.strip()]
+        template = random.choice(variants) if variants else DEFAULT_PHRASES[key]
+    elif isinstance(value, str) and value.strip():
+        template = value
+    else:
+        template = DEFAULT_PHRASES[key]
+    try:
+        return template.format(**kw)
+    except (KeyError, IndexError):
+        return DEFAULT_PHRASES[key].format(**kw)
+
+
 @dataclass
 class GreeterFlow:
     directory: list[Employee]
     notifier: Notifier
     event_logger: EventLogger = field(default=_noop_logger)
     opening_line: str = DEFAULT_OPENING_LINE
+    phrases: dict = field(default_factory=dict)
     state: FlowState = FlowState.GREET
     visitor_name: str = ""
     host: Optional[Employee] = None
     _retry: int = 0
+
+    def _say(self, key: str) -> str:
+        """Resolve a spoken line, filling in the current visitor/host names."""
+        host_name = self.host.name if self.host else ""
+        return resolve_phrase(
+            self.phrases,
+            key,
+            name=self.visitor_name,
+            visitor=self.visitor_name,
+            host=host_name,
+        )
 
     def start(self) -> FlowResult:
         """Visitor was detected approaching. Open the conversation."""
@@ -188,7 +246,7 @@ class GreeterFlow:
             return self._on_confirm(text)
         if self.state in (FlowState.NOTIFYING, FlowState.DONE):
             return FlowResult(
-                say="They're on their way. Please have a seat.",
+                say=self._say("already_on_way"),
                 state=FlowState.DONE,
                 done=True,
             )
@@ -199,13 +257,13 @@ class GreeterFlow:
         name = extract_visitor_name(text)
         if not name:
             return FlowResult(
-                say="Sorry, I didn't catch your name. Could you say it again?",
+                say=self._say("didnt_catch_name"),
                 state=self.state,
             )
         self.visitor_name = name
         self.state = FlowState.AWAITING_HOST_NAME
         return FlowResult(
-            say=f"Nice to meet you, {name}. Who are you here to see?",
+            say=self._say("ask_host"),
             state=self.state,
         )
 
@@ -218,19 +276,19 @@ class GreeterFlow:
                 self.state = FlowState.DONE
                 self.event_logger(self.visitor_name, None, "unknown_host")
                 return FlowResult(
-                    say="I can't find that name. Please ring the doorbell for a human.",
+                    say=self._say("host_unknown_giveup"),
                     state=self.state,
                     done=True,
                 )
             return FlowResult(
-                say="I don't have anyone by that name. Could you spell it?",
+                say=self._say("host_unknown_retry"),
                 state=self.state,
             )
         self.host = host
         self._retry = 0
         self.state = FlowState.AWAITING_CONFIRMATION
         return FlowResult(
-            say=f"{self.visitor_name} here to see {host.name}, correct?",
+            say=self._say("confirm_host"),
             state=self.state,
         )
 
@@ -242,20 +300,21 @@ class GreeterFlow:
             self.notifier(self.host, message)
             self.state = FlowState.DONE
             self.event_logger(self.visitor_name, self.host, "notified")
-            return FlowResult(
-                say=f"Great. I'm letting {self.host.name} know — they're on their way.",
+            result = FlowResult(
+                say=self._say("notified_host"),
                 state=self.state,
                 notify=self.host,
                 done=True,
             )
+            return result
         if _is_no(text):
             self.host = None
             self.state = FlowState.AWAITING_HOST_NAME
             return FlowResult(
-                say="My mistake. Who are you here to see?",
+                say=self._say("confirm_no"),
                 state=self.state,
             )
         return FlowResult(
-            say="Sorry — yes or no? Did I get the name right?",
+            say=self._say("confirm_unclear"),
             state=self.state,
         )

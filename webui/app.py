@@ -21,7 +21,7 @@ from flask import (
 
 from greeter.config import load_layered_config, load_json_file
 from greeter.directory import resolve_directory_path
-from greeter.flow import Employee, load_employees
+from greeter.flow import DEFAULT_PHRASES, Employee, load_employees
 from greeter import m365
 from webui import system_info
 from webui.settings_store import (
@@ -34,6 +34,41 @@ SECRETS_PATH = ROOT / "secrets.json"
 EMPLOYEES_PATH = ROOT / "employees.json"
 
 HOST_CHANNEL_PREFIXES = ("email", "teams", "slack")
+
+# Greeter phrase slots shown on the Phrases tab: (config key, label, placeholders).
+PHRASE_META = [
+    ("didnt_catch_name", "Didn't catch the visitor's name", []),
+    ("ask_host", "Ask who they're visiting", ["name"]),
+    ("host_unknown_retry", "Host not found — ask again", []),
+    ("host_unknown_giveup", "Host not found — give up", []),
+    ("confirm_host", "Confirm visitor and host", ["visitor", "host"]),
+    ("notified_host", "Host has been notified", ["host"]),
+    ("confirm_no", "Visitor said the host was wrong", []),
+    ("confirm_unclear", "Yes/no answer not understood", []),
+    ("already_on_way", "Repeat / already on the way", []),
+    ("didnt_catch", "Didn't catch speech (general)", []),
+]
+
+
+def _phrase_value_to_text(value):
+    """A phrase value (str or list of variants) -> textarea text, one per line."""
+    if isinstance(value, (list, tuple)):
+        return "\n".join(str(v) for v in value)
+    return str(value or "")
+
+
+def _phrase_fields(cfg):
+    effective = {**DEFAULT_PHRASES, **(cfg.get("phrases") or {})}
+    return [
+        {
+            "key": key,
+            "label": label,
+            "placeholders": placeholders,
+            "text": _phrase_value_to_text(effective.get(key, DEFAULT_PHRASES[key])),
+            "default": DEFAULT_PHRASES[key],
+        }
+        for key, label, placeholders in PHRASE_META
+    ]
 
 
 def merged_config() -> dict:
@@ -155,6 +190,7 @@ def create_app() -> Flask:
             audio=system_info.list_audio_devices(),
             aplay_devices=system_info.list_aplay_devices(),
             secrets_set=secrets_set,
+            phrase_fields=_phrase_fields(cfg),
         )
 
     # ---- saves ----------------------------------------------------------
@@ -233,6 +269,27 @@ def create_app() -> Flask:
                       CONFIG_PATH, SECRETS_PATH)
         flash("Directory settings saved. Restart the agent to apply.", "ok")
         return redirect(url_for("index", _anchor="addressbook"))
+
+    # ---- greeter phrases ------------------------------------------------
+    @app.route("/save/phrases", methods=["POST"])
+    def save_phrases():
+        # Build the whole phrases block from the form so clearing a field
+        # reverts that line to its built-in default (a blank field = omitted).
+        phrases = {}
+        for key, _label, _ph in PHRASE_META:
+            variants = [
+                ln.strip() for ln in request.form.get(key, "").splitlines() if ln.strip()
+            ]
+            if len(variants) == 1:
+                phrases[key] = variants[0]
+            elif len(variants) > 1:
+                phrases[key] = variants
+            # zero non-blank lines -> leave it out, default applies
+        cfg = load_json_file(CONFIG_PATH)
+        cfg["phrases"] = phrases
+        atomic_write_json(CONFIG_PATH, cfg)
+        flash("Phrases saved. Restart the agent to apply.", "ok")
+        return redirect(url_for("index", _anchor="phrases"))
 
     # ---- local address book CRUD ---------------------------------------
     @app.route("/addressbook/save", methods=["POST"])
