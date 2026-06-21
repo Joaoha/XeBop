@@ -23,6 +23,7 @@ class FlowState(str, Enum):
     AWAITING_VISITOR_NAME = "awaiting_visitor_name"
     AWAITING_VISITOR_NAME_CONFIRM = "awaiting_visitor_name_confirm"
     AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
+    AWAITING_LAST_NAME = "awaiting_last_name"
     AWAITING_RETURNING_CHOICE = "awaiting_returning_choice"
     AWAITING_HOST_NAME = "awaiting_host_name"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
@@ -202,6 +203,7 @@ DEFAULT_OPENING_LINE = "Hi there! Welcome. What's your name?"
 DEFAULT_PHRASES = {
     "didnt_catch_name": "Sorry, I didn't catch your name. Could you say it again?",
     "visitor_name_confirm": "I heard {name} — is that right?",
+    "ask_last_name": "Thanks! And your last name?",
     "spell_name": "Could you spell your name for me, one letter at a time?",
     "returning_visitor": "Welcome back, {name}! You're still checked in to see {host}. Say 'check out' to leave, or tell me who you're here to see now.",
     "ask_host": "Nice to meet you, {name}. Who are you here to see?",
@@ -441,6 +443,8 @@ class GreeterFlow:
             return self._on_visitor_name_confirm(text)
         if self.state == FlowState.AWAITING_VISITOR_NAME_SPELL:
             return self._on_visitor_name_spell(text)
+        if self.state == FlowState.AWAITING_LAST_NAME:
+            return self._on_last_name(text)
         if self.state == FlowState.AWAITING_RETURNING_CHOICE:
             return self._on_returning_choice(text)
         if self.state == FlowState.AWAITING_HOST_NAME:
@@ -471,10 +475,27 @@ class GreeterFlow:
                 state=self.state,
             )
         self.visitor_name = name
-        # A garbled-looking name skips straight to spelling; otherwise confirm it.
+        # A garbled-looking name skips straight to spelling; otherwise decide
+        # whether we still need a last name.
         if name_looks_uncertain(name):
             self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
             return FlowResult(say=self._say("spell_name"), state=self.state)
+        return self._name_next()
+
+    def _name_next(self) -> FlowResult:
+        """After a name fragment: ask for a last name if we only have one word,
+        else confirm the full name."""
+        if len(self.visitor_name.split()) < 2:
+            self.state = FlowState.AWAITING_LAST_NAME
+            return FlowResult(say=self._say("ask_last_name"), state=self.state)
+        self.state = FlowState.AWAITING_VISITOR_NAME_CONFIRM
+        return FlowResult(say=self._say("visitor_name_confirm"), state=self.state)
+
+    def _on_last_name(self, text: str) -> FlowResult:
+        last = extract_visitor_name(text)
+        if not last:
+            return FlowResult(say=self._say("ask_last_name"), state=self.state)
+        self.visitor_name = f"{self.visitor_name} {last}".strip()
         self.state = FlowState.AWAITING_VISITOR_NAME_CONFIRM
         return FlowResult(say=self._say("visitor_name_confirm"), state=self.state)
 
@@ -491,7 +512,7 @@ class GreeterFlow:
         if not name:
             return FlowResult(say=self._say("didnt_catch_name"), state=self.state)
         self.visitor_name = name
-        return self._after_name()
+        return self._name_next()
 
     def _after_name(self) -> FlowResult:
         """Name is settled — if they're already checked in, handle that first;

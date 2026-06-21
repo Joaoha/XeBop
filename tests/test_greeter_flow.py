@@ -46,7 +46,7 @@ class HappyPathTests(unittest.TestCase):
         self.assertEqual(opening.state, FlowState.AWAITING_VISITOR_NAME)
         self.assertIn("name", opening.say.lower())
 
-        r1 = flow.handle("My name is Alice")
+        r1 = flow.handle("My name is Alice Smith")
         self.assertEqual(r1.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertIn("Alice", r1.say)
 
@@ -92,7 +92,7 @@ class CorrectionTests(unittest.TestCase):
     def test_no_on_confirm_reasks_host(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         flow.handle("yes")          # confirm visitor name
         flow.handle("Bren")
         r = flow.handle("no")
@@ -102,7 +102,7 @@ class CorrectionTests(unittest.TestCase):
     def test_unrecognized_confirm_stays(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         flow.handle("yes")          # confirm visitor name
         flow.handle("Joao")
         r = flow.handle("uhh")
@@ -127,7 +127,7 @@ class BrandingTests(unittest.TestCase):
         notifier = FakeNotifier()
         flow = GreeterFlow(directory=_dir(), notifier=notifier)
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         flow.handle("yes")          # confirm visitor name
         r1 = flow.handle("Bob")
         self.assertEqual(r1.state, FlowState.AWAITING_HOST_NAME)
@@ -155,7 +155,7 @@ class StopTests(unittest.TestCase):
     def test_stop_ends_session_from_any_state(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         flow.handle("yes")
         r = flow.handle("actually, stop")   # mid-conversation
         self.assertTrue(r.done)
@@ -189,21 +189,34 @@ class NameCaptureTests(unittest.TestCase):
     def test_confirm_yes_proceeds_to_host(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
-        r1 = flow.handle("Alice")
+        r1 = flow.handle("Alice Smith")
         self.assertEqual(r1.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertIn("Alice", r1.say)
         r2 = flow.handle("yes")
         self.assertEqual(r2.state, FlowState.AWAITING_HOST_NAME)
 
+    def test_last_name_asked_when_only_first_given(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        r1 = flow.handle("Alice")
+        self.assertEqual(r1.state, FlowState.AWAITING_LAST_NAME)
+        r2 = flow.handle("Smith")
+        self.assertEqual(r2.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
+        self.assertEqual(flow.visitor_name, "Alice Smith")
+
     def test_confirm_no_then_spell(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         r = flow.handle("no")
         self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
         r2 = flow.handle("A L I C E")
-        self.assertEqual(r2.state, FlowState.AWAITING_HOST_NAME)
+        # a spelled (single-word) name still needs a last name
+        self.assertEqual(r2.state, FlowState.AWAITING_LAST_NAME)
         self.assertEqual(flow.visitor_name, "Alice")
+        r3 = flow.handle("Smith")
+        self.assertEqual(r3.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
+        self.assertEqual(flow.visitor_name, "Alice Smith")
 
     def test_uncertain_name_skips_to_spelling(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
@@ -240,14 +253,14 @@ class ReturningVisitorTests(unittest.TestCase):
         return GreeterFlow(
             directory=_dir(),
             notifier=FakeNotifier(),
-            open_visit_lookup=lambda name: visit if name.lower() == "alice" else None,
+            open_visit_lookup=lambda name: visit if name.lower() == "alice smith" else None,
             on_check_out=lambda v, n: closed.append((v["visit_id"], n)),
         )
 
     def test_already_checked_in_offers_choice(self):
         flow = self._flow([])
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         r = flow.handle("yes")            # confirm name
         self.assertEqual(r.state, FlowState.AWAITING_RETURNING_CHOICE)
         self.assertIn("Joao Hage", r.say)
@@ -255,23 +268,23 @@ class ReturningVisitorTests(unittest.TestCase):
     def test_returning_then_checkout(self):
         closed = []
         flow = self._flow(closed)
-        flow.start(); flow.handle("Alice"); flow.handle("yes")
+        flow.start(); flow.handle("Alice Smith"); flow.handle("yes")
         r = flow.handle("I'm checking out")
         self.assertTrue(r.done)
-        self.assertEqual(closed, [("v1", "Alice")])
+        self.assertEqual(closed, [("v1", "Alice Smith")])
 
     def test_returning_then_see_someone_new_closes_old(self):
         closed = []
         flow = self._flow(closed)
-        flow.start(); flow.handle("Alice"); flow.handle("yes")
+        flow.start(); flow.handle("Alice Smith"); flow.handle("yes")
         r = flow.handle("Bren")           # new host -> closes stale visit, routes to host
-        self.assertEqual(closed, [("v1", "Alice")])
+        self.assertEqual(closed, [("v1", "Alice Smith")])
         self.assertEqual(r.state, FlowState.AWAITING_CONFIRMATION)
         self.assertIn("Bren Polly", r.say)
 
     def test_not_checked_in_goes_straight_to_host(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())  # default lookup -> None
-        flow.start(); flow.handle("Alice")
+        flow.start(); flow.handle("Alice Smith")
         r = flow.handle("yes")
         self.assertEqual(r.state, FlowState.AWAITING_HOST_NAME)
 

@@ -133,11 +133,11 @@ class FlowIntegrationTests(unittest.TestCase):
             on_check_in=lambda name, host: checkins.append((name, host.name if host else None)),
         )
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         flow.handle("yes")          # confirm visitor name
         flow.handle("Joao")
         flow.handle("yes")          # confirm host pairing
-        self.assertEqual(checkins, [("Alice", "Joao Hage")])
+        self.assertEqual(checkins, [("Alice Smith", "Joao Hage")])
 
     def test_event_logger_invoked_on_unknown_host(self):
         events = []
@@ -147,12 +147,12 @@ class FlowIntegrationTests(unittest.TestCase):
             event_logger=lambda *a: events.append(a),
         )
         flow.start()
-        flow.handle("Alice")
+        flow.handle("Alice Smith")
         flow.handle("yes")          # confirm visitor name
         flow.handle("Bob")
         flow.handle("Carol")
         flow.handle("Dan")
-        self.assertEqual(events, [("Alice", None, "unknown_host")])
+        self.assertEqual(events, [("Alice Smith", None, "unknown_host")])
 
 
 if __name__ == "__main__":
