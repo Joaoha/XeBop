@@ -929,7 +929,7 @@ class BotGUI:
         print("Transcribing...", flush=True)
         try:
             result = subprocess.run(
-                ["./whisper.cpp/build/bin/whisper-cli", "-m", "./whisper.cpp/models/ggml-base.en.bin", "-l", "en", "-t", "4", "-f", filename],
+                ["./whisper.cpp/build/bin/whisper-cli", "-m", "./whisper.cpp/models/ggml-small.en.bin", "-l", "en", "-t", "4", "-f", filename],
                 capture_output=True, text=True
             )
             transcription_lines = result.stdout.strip().split('\n')
