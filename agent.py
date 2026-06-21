@@ -48,6 +48,7 @@ import ollama
 from duckduckgo_search import DDGS
 
 # --- GREETER PIPELINE ---
+from greeter.config import load_layered_config
 from greeter.flow import GreeterFlow, FlowState, load_employees
 from greeter.notify import make_notifier
 from greeter.visitor_log import VisitorLog
@@ -57,6 +58,7 @@ from greeter.visitor_log import VisitorLog
 # =========================================================================
 
 CONFIG_FILE = "config.json"
+SECRETS_FILE = "secrets.json"  # gitignored; deep-merged over config.json (passwords, client secret)
 MEMORY_FILE = "memory.json"
 BMO_IMAGE_FILE = "current_image.jpg"
 GREETER_PERSONA_FILE = "prompts/greeter_persona.txt"
@@ -114,15 +116,13 @@ OLLAMA_OPTIONS = {
 }
 
 def load_config():
-    config = DEFAULT_CONFIG.copy()
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                user_config = json.load(f)
-                config.update(user_config)
-        except Exception as e:
-            print(f"Config Error: {e}. Using defaults.")
-    return config
+    """Build the runtime config: DEFAULT_CONFIG < config.json < secrets.json.
+
+    secrets.json is gitignored and mirrors the config tree, so secrets
+    (SMTP password, M365 client secret, web UI password hash) stay out of
+    the tracked config.json. See greeter.config for the merge logic.
+    """
+    return load_layered_config(DEFAULT_CONFIG, CONFIG_FILE, SECRETS_FILE)
 
 CURRENT_CONFIG = load_config()
 TEXT_MODEL = CURRENT_CONFIG["text_model"]

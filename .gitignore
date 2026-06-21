@@ -28,6 +28,13 @@ chat_memory.json
 # Visitor log can contain real visitor/host names — keep it on-device only
 visitor_log.jsonl
 
+# Secrets (SMTP password, M365 client secret, web UI password hash).
+# Deep-merged over config.json at runtime; never commit real values.
+secrets.json
+
+# M365 directory cache (synced from Microsoft Graph; may list staff)
+m365_directory.json
+
 # Keep personal API keys or settings local
 # (Optional: comment this out if you WANT to share your config)
 # config.json
