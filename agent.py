@@ -673,7 +673,11 @@ class BotGUI:
                     continue
 
                 self.run_greeter_session(trigger_source)
-                    
+
+                # Cooldown after a session so the tail of our own TTS / room
+                # echo doesn't immediately retrigger the wake-word detector.
+                time.sleep(1.5)
+
         except Exception as e:
             traceback.print_exc()
             self.set_state(BotStates.ERROR, f"Fatal Error: {str(e)[:40]}")
