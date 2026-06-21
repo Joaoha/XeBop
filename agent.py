@@ -298,6 +298,7 @@ class BotGUI:
         self.permanent_memory = self.load_chat_history()
         self.session_memory = []
         self.thinking_sound_active = threading.Event()
+        self.thinking_sound_thread = None
         
         self.last_ptt_time = 0 
         self.ptt_event = threading.Event()       
@@ -637,11 +638,34 @@ class BotGUI:
         # Recording is done — switch to THINKING and acknowledge so the visitor
         # doesn't think it's still waiting on them while Whisper transcribes.
         self.set_state(BotStates.THINKING, "Got it…")
-        self._acknowledge()
+        self._start_thinking_sounds()
         text = self.transcribe_audio(audio_file)
+        self._stop_thinking_sounds()
         if text:
             self.append_to_text(f"YOU: {text}")
         return text
+
+    def _start_thinking_sounds(self):
+        """Play 'thinking' hums (let me think / processing…) while we transcribe.
+
+        If there are no thinking clips, fall back to a quick spoken ack so the
+        visitor still hears acknowledgement.
+        """
+        if self.get_random_sound(thinking_sounds_dir):
+            self.thinking_sound_active.set()
+            self.thinking_sound_thread = threading.Thread(
+                target=self._run_thinking_sound_loop, daemon=True)
+            self.thinking_sound_thread.start()
+        else:
+            self._acknowledge()
+
+    def _stop_thinking_sounds(self):
+        # Clear the flag and wait for any in-flight clip to finish, so it can't
+        # collide with the response speech (both use the same ALSA device).
+        self.thinking_sound_active.clear()
+        if self.thinking_sound_thread:
+            self.thinking_sound_thread.join(timeout=3.0)
+            self.thinking_sound_thread = None
 
     def run_greeter_session(self, first_trigger_source):
         """Run one visitor conversation: greet → ask host → confirm → notify."""
