@@ -39,6 +39,8 @@
     "path": "visitor_log.jsonl",
     "mode": "minimal",
     "retention_days": 7,
-    "salt": ""
+    "salt": "",
+    "capture_photo": true,
+    "photo_dir": "visitor_photos"
   }
 }

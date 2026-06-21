@@ -21,6 +21,7 @@ import json
 import os
 import tempfile
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,25 +43,108 @@ class VisitorLog:
         self.path = Path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
+    def _append(self, entry: dict) -> dict:
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        return entry
+
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
     def record(
         self,
         visitor_name: str,
         host: Optional[Employee],
         outcome: str,
     ) -> dict:
-        """Append one entry. `outcome` is e.g. 'notified', 'unknown_host',
-        'no_confirmation'."""
-        entry = {
-            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        """Append a non-visit audit entry. `outcome` is e.g. 'unknown_host',
+        'no_confirmation'. (Successful arrivals use `check_in`.)"""
+        return self._append({
+            "ts": self._now(),
             "visitor": self._encode_visitor(visitor_name),
             "host": host.name if host else None,
             "host_channel_id": host.host_channel_id if host else None,
             "outcome": outcome,
             "mode": self.mode,
-        }
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        return entry
+        })
+
+    def check_in(
+        self,
+        visitor_name: str,
+        host: Optional[Employee],
+        photo: Optional[str] = None,
+    ) -> str:
+        """Open a visit: append a check_in event and return its visit_id."""
+        visit_id = uuid.uuid4().hex[:12]
+        self._append({
+            "ts": self._now(),
+            "visit_id": visit_id,
+            "kind": "check_in",
+            "visitor": self._encode_visitor(visitor_name),
+            "host": host.name if host else None,
+            "host_channel_id": host.host_channel_id if host else None,
+            "photo": photo,
+            "outcome": "checked_in",
+            "mode": self.mode,
+        })
+        return visit_id
+
+    def check_out(self, visit_id: str) -> dict:
+        """Close a visit: append a check_out event for `visit_id`."""
+        return self._append({
+            "ts": self._now(),
+            "visit_id": visit_id,
+            "kind": "check_out",
+            "outcome": "checked_out",
+            "mode": self.mode,
+        })
+
+    def open_visits(self, now: Optional[datetime] = None) -> list[dict]:
+        """Check-ins with no matching check-out, newest first.
+
+        Each is annotated with `duration_seconds`. Derived by replay — the log
+        itself is never mutated.
+        """
+        now = now or datetime.now(timezone.utc)
+        checkins: dict[str, dict] = {}
+        closed: set[str] = set()
+        for e in self.entries():
+            vid = e.get("visit_id")
+            if not vid:
+                continue
+            if e.get("kind") == "check_in":
+                checkins[vid] = e
+            elif e.get("kind") == "check_out":
+                closed.add(vid)
+        out: list[dict] = []
+        for vid, e in checkins.items():
+            if vid in closed:
+                continue
+            entry = dict(e)
+            try:
+                ts = datetime.fromisoformat(e["ts"].replace("Z", "+00:00"))
+                entry["duration_seconds"] = int((now - ts).total_seconds())
+            except (ValueError, KeyError):
+                entry["duration_seconds"] = None
+            out.append(entry)
+        out.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        return out
+
+    def find_open_visit(self, name: str) -> Optional[dict]:
+        """Match a returning visitor (by name) to their open visit, or None.
+
+        In `minimal` mode the per-day hash is stable, so same-day check-outs
+        match; in `standard` mode we also compare names case-insensitively.
+        """
+        target = self._encode_visitor(name)
+        norm = name.strip().lower()
+        for v in self.open_visits():
+            stored = v.get("visitor")
+            if stored == target:
+                return v
+            if self.mode == "standard" and isinstance(stored, str) and stored.strip().lower() == norm:
+                return v
+        return None
 
     def prune(self, now: Optional[datetime] = None) -> int:
         """Drop entries older than `retention_days`. Returns count removed."""
@@ -81,6 +165,13 @@ class VisitorLog:
                 continue
             if ts < cutoff:
                 removed += 1
+                # Drop the visitor's photo along with the expired record (PII).
+                photo = entry.get("photo")
+                if photo:
+                    try:
+                        os.unlink(photo)
+                    except OSError:
+                        pass
                 continue
             kept.append(line)
         self._atomic_rewrite(kept)
