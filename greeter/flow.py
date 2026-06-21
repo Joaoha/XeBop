@@ -59,6 +59,7 @@ class FlowResult:
     state: FlowState
     notify: Optional[Employee] = None  # set when we should notify a host
     done: bool = False
+    sleep: bool = False  # set when the visitor asked the greeter to go to sleep
 
 
 # Notifier is the side-effect dependency we mock in tests.
@@ -223,8 +224,10 @@ DEFAULT_PHRASES = {
     "checkout_done": "Thanks {name}, you're all signed out. Take care!",
     "checkout_not_found": "Hmm, I don't see you checked in. What name did you check in under?",
     "checkout_not_found_giveup": "I can't find your check-in — no worries, have a great day!",
-    # Visitor cancelled / "go to sleep":
+    # Visitor cancelled ("stop"):
     "stopped": "No problem — say my name whenever you need me.",
+    # Visitor told the greeter to sleep ("go to sleep"):
+    "going_to_sleep": "Okay, going to sleep. Say my name to wake me.",
     # Notification SENT TO THE HOST when their visitor leaves (not spoken):
     "exit_notice": "{visitor} has checked out and left the building.",
 }
@@ -249,18 +252,35 @@ def is_checkout_intent(text: str) -> bool:
     return bool(set(norm.split()) & _CHECKOUT_WORDS)
 
 
-# Cancel / "go to sleep" — recognized at any point in a session.
-_STOP_PHRASES = ("go to sleep", "never mind", "forget it", "go away", "shut down", "shut up")
-_STOP_WORDS = {"stop", "cancel", "sleep", "quiet"}
+# Recognized at any point in a session. Sleep and cancel both end the turn,
+# but only sleep puts the greeter into the sleeping face until woken.
+_SLEEP_PHRASES = ("go to sleep", "good night", "goodnight", "go to bed")
+_SLEEP_WORDS = {"sleep"}
+_CANCEL_PHRASES = ("never mind", "forget it", "go away", "shut down", "shut up")
+_CANCEL_WORDS = {"stop", "cancel", "quiet"}
 
 
-def is_stop_intent(text: str) -> bool:
+def is_sleep_intent(text: str) -> bool:
     norm = _normalize(text)
     if not norm:
         return False
-    if any(p in norm for p in _STOP_PHRASES):
+    if any(p in norm for p in _SLEEP_PHRASES):
         return True
-    return bool(set(norm.split()) & _STOP_WORDS)
+    return bool(set(norm.split()) & _SLEEP_WORDS)
+
+
+def is_cancel_intent(text: str) -> bool:
+    norm = _normalize(text)
+    if not norm:
+        return False
+    if any(p in norm for p in _CANCEL_PHRASES):
+        return True
+    return bool(set(norm.split()) & _CANCEL_WORDS)
+
+
+def is_stop_intent(text: str) -> bool:
+    """Either a sleep or cancel command (anything that ends the turn)."""
+    return is_sleep_intent(text) or is_cancel_intent(text)
 
 
 def name_looks_uncertain(name: str) -> bool:
@@ -407,8 +427,12 @@ class GreeterFlow:
     def handle(self, text: str) -> FlowResult:
         """Advance the flow with one turn of recognized speech."""
         text = (text or "").strip()
-        # "Hey XeBop, stop / go to sleep" — bail out from anywhere in a session.
-        if is_stop_intent(text):
+        # Bail out from anywhere in a session. "Go to sleep" ends the turn AND
+        # puts the greeter to sleep (sleeping face); "stop"/"cancel" just ends it.
+        if is_sleep_intent(text):
+            self.state = FlowState.DONE
+            return FlowResult(say=self._say("going_to_sleep"), state=self.state, done=True, sleep=True)
+        if is_cancel_intent(text):
             self.state = FlowState.DONE
             return FlowResult(say=self._say("stopped"), state=self.state, done=True)
         if self.state == FlowState.AWAITING_VISITOR_NAME:

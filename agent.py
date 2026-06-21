@@ -299,6 +299,7 @@ class BotGUI:
         self.session_memory = []
         self.thinking_sound_active = threading.Event()
         self.thinking_sound_thread = None
+        self.asleep = False  # True only after a "go to sleep" command, until woken
         
         self.last_ptt_time = 0 
         self.ptt_event = threading.Event()       
@@ -705,13 +706,15 @@ class BotGUI:
             self._enqueue_speech(result.say)
 
             if result.done:
+                # Remember if they told us to sleep — drives the resting face.
+                self.asleep = bool(getattr(result, "sleep", False))
                 self.wait_for_tts()
-                self.set_state(BotStates.IDLE, "Done")
+                self.set_state(BotStates.SLEEP if self.asleep else BotStates.IDLE,
+                               "Sleeping…" if self.asleep else "Done")
                 time.sleep(ON_THEIR_WAY_DISPLAY_S)
                 break
 
         self.wait_for_tts()
-        self.set_state(BotStates.IDLE, "Ready")
 
     # =========================================================================
     # 3a. (legacy) ACTION ROUTER — unused by greeter; kept for tooling reuse
@@ -823,7 +826,10 @@ class BotGUI:
         print("Models loaded.", flush=True)
 
     def detect_wake_word_or_ptt(self):
-        self.set_state(BotStates.SLEEP, "Say my name to wake me")
+        if self.asleep:
+            self.set_state(BotStates.SLEEP, "Sleeping… say my name to wake me")
+        else:
+            self.set_state(BotStates.IDLE, "Waiting…")
         self.ptt_event.clear()
         
         if self.oww_model: self.oww_model.reset()

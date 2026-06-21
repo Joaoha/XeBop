@@ -56,7 +56,8 @@ PHRASE_META = [
     ("didnt_catch", "Didn't catch speech (general)", []),
     ("ack", "Acknowledgement while thinking", []),
     ("hold_still", "Before taking the check-in photo", []),
-    ("stopped", "Visitor said stop / go to sleep", []),
+    ("stopped", "Visitor said stop / cancel", []),
+    ("going_to_sleep", "Visitor said go to sleep", []),
 ]
 
 

@@ -11,7 +11,9 @@ from greeter.flow import (  # noqa: E402
     FlowState,
     GreeterFlow,
     find_employee,
+    is_cancel_intent,
     is_checkout_intent,
+    is_sleep_intent,
     is_stop_intent,
     load_employees,
     name_looks_uncertain,
@@ -159,6 +161,28 @@ class StopTests(unittest.TestCase):
         self.assertTrue(r.done)
         self.assertEqual(r.state, FlowState.DONE)
         self.assertIsNone(r.notify)
+
+    def test_sleep_vs_cancel_intents(self):
+        self.assertTrue(is_sleep_intent("go to sleep"))
+        self.assertTrue(is_sleep_intent("sleep"))
+        self.assertFalse(is_sleep_intent("stop"))
+        self.assertTrue(is_cancel_intent("stop"))
+        self.assertTrue(is_cancel_intent("cancel"))
+        self.assertFalse(is_cancel_intent("go to sleep"))
+
+    def test_go_to_sleep_sets_sleep_flag(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        r = flow.handle("go to sleep")
+        self.assertTrue(r.done)
+        self.assertTrue(r.sleep)
+
+    def test_cancel_does_not_set_sleep_flag(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
+        flow.start()
+        r = flow.handle("stop")
+        self.assertTrue(r.done)
+        self.assertFalse(r.sleep)
 
 
 class NameCaptureTests(unittest.TestCase):
