@@ -21,17 +21,15 @@ clips play at startup, thinking clips loop while transcribing.
 """
 from __future__ import annotations
 
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from greeter.config import load_layered_config  # noqa: E402
+from greeter.sound_maker import CATEGORIES, synthesize  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-CATEGORIES = {"greeting", "thinking", "ack", "error"}
 
 
 def main() -> None:
@@ -40,10 +38,7 @@ def main() -> None:
         sys.exit(1)
 
     category, name = sys.argv[1], sys.argv[2]
-    text = " ".join(sys.argv[3:]).strip()
-    if not text:
-        print("No text given.")
-        sys.exit(1)
+    text = " ".join(sys.argv[3:])
 
     cfg = load_layered_config({}, ROOT / "config.json", ROOT / "secrets.json")
     voice = (
@@ -51,22 +46,11 @@ def main() -> None:
         or cfg.get("voice_model")
         or "piper/en_GB-semaine-medium.onnx"
     )
-    piper = "piper" if shutil.which("piper") else str(ROOT / "piper" / "piper")
-
-    out_dir = ROOT / "sounds" / f"{category}_sounds"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{name}.wav"
-
-    print(f"Synthesizing '{text}'\n  voice: {voice}\n  -> {out}")
-    result = subprocess.run(
-        [piper, "--model", str(voice), "--output_file", str(out)],
-        input=text, text=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-    )
-    if result.returncode != 0:
-        print(f"piper failed: {result.stderr.strip()}")
+    ok, msg = synthesize(ROOT, category, name, text, voice)
+    print(msg)
+    if not ok:
         sys.exit(1)
-    print("Done. It'll be used automatically next time the agent runs.")
+    print("It'll be used automatically next time the agent runs.")
 
 
 if __name__ == "__main__":

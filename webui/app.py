@@ -26,7 +26,7 @@ from greeter.directory import resolve_directory_path
 from greeter.flow import DEFAULT_PHRASES, Employee, load_employees, resolve_phrase
 from greeter.notify import make_notifier
 from greeter.visitor_log import VisitorLog
-from greeter import m365
+from greeter import m365, sound_maker
 from webui import system_info
 from webui.settings_store import (
     atomic_write_json, save_settings, set_webui_password, verify_password,
@@ -275,6 +275,8 @@ def create_app() -> Flask:
             aplay_devices=system_info.list_aplay_devices(),
             secrets_set=secrets_set,
             phrase_fields=_phrase_fields(cfg),
+            sound_clips=sound_maker.list_clips(ROOT),
+            sound_categories=sound_maker.CATEGORIES,
             on_site=on_site,
             history=history,
             photos=_photo_entries(),
@@ -313,6 +315,43 @@ def create_app() -> Flask:
         if path is None:
             abort(404)
         return send_file(path, mimetype="image/jpeg")
+
+    # ---- sound maker ----------------------------------------------------
+    @app.route("/sounds/make", methods=["POST"])
+    def sound_make():
+        cfg = merged_config()
+        voice = (
+            (cfg.get("branding") or {}).get("voice_model")
+            or cfg.get("voice_model")
+            or "piper/en_GB-semaine-medium.onnx"
+        )
+        ok, msg = sound_maker.synthesize(
+            ROOT,
+            request.form.get("category", ""),
+            request.form.get("name", ""),
+            request.form.get("text", ""),
+            voice,
+        )
+        flash(msg + (" Restart the agent to use it." if ok else ""), "ok" if ok else "error")
+        return redirect(url_for("index", _anchor="sounds"))
+
+    @app.route("/sounds/delete", methods=["POST"])
+    def sound_delete():
+        if sound_maker.delete_clip(ROOT, request.form.get("category", ""), request.form.get("name", "")):
+            flash("Sound deleted.", "ok")
+        else:
+            flash("Could not delete sound.", "error")
+        return redirect(url_for("index", _anchor="sounds"))
+
+    @app.route("/sounds/play/<category>/<name>")
+    def sound_play(category, name):
+        try:
+            p = sound_maker.clip_path(ROOT, category, name)
+        except ValueError:
+            abort(404)
+        if not p.exists():
+            abort(404)
+        return send_file(p, mimetype="audio/wav")
 
     # ---- visitor-log / privacy settings --------------------------------
     @app.route("/save/visitorlog", methods=["POST"])

@@ -3,6 +3,7 @@
 <div class="tabs" role="tablist">
   <button class="tab" data-tab="visitors">Visitors</button>
   <button class="tab" data-tab="photos">Photos</button>
+  <button class="tab" data-tab="sounds">Sounds</button>
   <button class="tab" data-tab="addressbook">Address Book</button>
   <button class="tab" data-tab="notify">Notifications</button>
   <button class="tab" data-tab="branding">Branding</button>
@@ -102,6 +103,55 @@
   {% else %}
   <p class="muted">No photos on the device.</p>
   {% endif %}
+</section>
+
+<!-- ============================ SOUNDS ============================ -->
+<section id="sounds" class="panel card" hidden>
+  <h2>Sounds</h2>
+  <p class="muted">Generate clips in the greeter's own voice. <code>greeting</code> plays
+    at startup; <code>thinking</code> loops while it transcribes. Restart the agent after
+    adding/removing clips.</p>
+
+  <form method="post" action="{{ url_for('sound_make') }}">
+    <fieldset>
+      <legend>New sound</legend>
+      <label>Category
+        <select name="category">
+          {% for c in sound_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>File name <input name="name" placeholder="all_systems_go" required></label>
+      <label>What it should say <input name="text" placeholder="All systems go." required></label>
+      <button class="btn-primary" type="submit">Create sound</button>
+    </fieldset>
+  </form>
+
+  <hr>
+  {% for cat in sound_categories %}
+  <h3>{{ cat }}</h3>
+  {% if sound_clips[cat] %}
+  <table class="emp-table">
+    <tbody>
+      {% for n in sound_clips[cat] %}
+      <tr>
+        <td>{{ n }}</td>
+        <td><audio controls preload="none" src="{{ url_for('sound_play', category=cat, name=n) }}"></audio></td>
+        <td>
+          <form method="post" action="{{ url_for('sound_delete') }}" class="inline"
+                onsubmit="return confirm('Delete {{ n }}?');">
+            <input type="hidden" name="category" value="{{ cat }}">
+            <input type="hidden" name="name" value="{{ n }}">
+            <button class="btn" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No {{ cat }} clips.</p>
+  {% endif %}
+  {% endfor %}
 </section>
 
 <!-- ============================ ADDRESS BOOK ============================ -->
