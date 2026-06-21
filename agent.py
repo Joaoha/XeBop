@@ -780,16 +780,26 @@ class BotGUI:
                 
                 # Pre-allocate buffer for speed
                 # If blocksize is 0, we read what is available.
-                
+
+                # "Press Enter to talk" only makes sense on an interactive TTY.
+                # Under systemd/autostart stdin is /dev/null, which select()
+                # always reports readable (instant EOF) — that would fire CLI
+                # triggers in a loop and bypass the wake word. Guard on isatty.
+                try:
+                    interactive_stdin = bool(sys.stdin) and sys.stdin.isatty()
+                except Exception:
+                    interactive_stdin = False
+
                 while True:
                     if self.ptt_event.is_set():
                         self.ptt_event.clear()
                         raise StopIteration("PTT")
 
-                    rlist, _, _ = select.select([sys.stdin], [], [], 0.001)
-                    if rlist: 
-                        sys.stdin.readline()
-                        raise StopIteration("CLI")
+                    if interactive_stdin:
+                        rlist, _, _ = select.select([sys.stdin], [], [], 0.001)
+                        if rlist:
+                            sys.stdin.readline()
+                            raise StopIteration("CLI")
 
                     # If fallback mode (blocksize 0), read fixed amount
                     read_size = input_chunk_size
