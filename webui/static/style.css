@@ -61,3 +61,8 @@ button { cursor: pointer; font: inherit; }
 .emp-table td { padding: 3px; }
 .emp-table input { margin-top: 0; }
 .row-del { color: var(--err); }
+
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 14px; }
+.photo-card { background: #11141b; border: 1px solid var(--line); border-radius: 8px; padding: 8px; text-align: center; }
+.photo-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; }
+.photo-card .muted { font-size: 12px; margin: 6px 0; }

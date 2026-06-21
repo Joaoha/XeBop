@@ -2,6 +2,7 @@
 {% block content %}
 <div class="tabs" role="tablist">
   <button class="tab" data-tab="visitors">Visitors</button>
+  <button class="tab" data-tab="photos">Photos</button>
   <button class="tab" data-tab="addressbook">Address Book</button>
   <button class="tab" data-tab="notify">Notifications</button>
   <button class="tab" data-tab="branding">Branding</button>
@@ -50,6 +51,33 @@
   </table>
   {% else %}
   <p class="muted">No visitor activity yet.</p>
+  {% endif %}
+</section>
+
+<!-- ============================ PHOTOS ============================ -->
+<section id="photos" class="panel card" hidden>
+  <h2>Photos</h2>
+  <p class="muted">Check-in photos held on the device. They're auto-deleted after the
+    visitor-log retention window — delete any manually here if needed.</p>
+  {% if photos %}
+  <form method="post" action="{{ url_for('photos_delete_all') }}" class="inline"
+        onsubmit="return confirm('Delete ALL {{ photos|length }} photos? This cannot be undone.');">
+    <button class="btn-warn" type="submit">Delete all photos</button>
+  </form>
+  <div class="photo-grid">
+    {% for p in photos %}
+    <div class="photo-card">
+      <img src="{{ url_for('visitor_photo', visit_id=p.visit_id) }}" alt="{{ p.name }}">
+      <div class="muted">{{ p.name }}<br>{{ p.ts }}</div>
+      <form method="post" action="{{ url_for('photo_delete', visit_id=p.visit_id) }}"
+            onsubmit="return confirm('Delete this photo?');">
+        <button class="btn" type="submit">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No photos on the device.</p>
   {% endif %}
 </section>
 

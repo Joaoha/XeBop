@@ -97,6 +97,23 @@ class WebUITests(unittest.TestCase):
             self.assertEqual(r.status_code, 302)
         self.assertEqual(VisitorLog(path=log_path, mode="standard").open_visits(), [])
 
+    def test_photo_delete_removes_file(self):
+        from greeter.flow import Employee
+        from greeter.visitor_log import VisitorLog
+        photo_dir = self.appmod.ROOT / "visitor_photos"
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        vid = "abc123def456"
+        photo_rel = f"visitor_photos/{vid}.jpg"
+        (self.appmod.ROOT / photo_rel).write_bytes(b"\xff\xd8\xff")
+        VisitorLog(path=self.appmod.ROOT / "visitor_log.jsonl", mode="standard").check_in(
+            "Alice", Employee("Joao", "", (), "slack:U01"), photo=photo_rel, visit_id=vid
+        )
+        with self.app.test_client() as c:
+            c.post("/login", data={"password": "hunter2", "confirm": "hunter2"})
+            r = c.post(f"/photos/delete/{vid}")
+            self.assertEqual(r.status_code, 302)
+        self.assertFalse((self.appmod.ROOT / photo_rel).exists())
+
     def test_photo_route_requires_login(self):
         with self.app.test_client() as c:
             r = c.get("/visitors/photo/anything")

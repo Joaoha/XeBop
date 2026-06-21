@@ -39,7 +39,7 @@
   },
   "visitor_log": {
     "path": "visitor_log.jsonl",
-    "mode": "minimal",
+    "mode": "standard",
     "retention_days": 7,
     "salt": "",
     "capture_photo": true,

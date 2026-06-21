@@ -69,6 +69,27 @@ def _save(img: Image.Image, state: str, idx: int) -> None:
     img.save(out / f"{state}_{idx:02d}.png", "PNG")
 
 
+def gen_sleep() -> None:
+    # closed eyes + a slow drifting "z z Z" — the resting/asleep face
+    f_small, f_med, f_big = _font(28), _font(42), _font(60)
+    for i in range(6):
+        img = _base()
+        d = ImageDraw.Draw(img)
+        # closed eyes: flat rounded bars
+        for cx in (EYE_CX_L, EYE_CX_R):
+            d.rounded_rectangle((cx - EYE_RX, EYE_CY - 7, cx + EYE_RX, EYE_CY + 7),
+                                radius=7, fill=EYE_DIM)
+        # calm mouth line
+        d.rounded_rectangle((W // 2 - 50, 360, W // 2 + 50, 370), radius=6, fill=ACCENT_DIM)
+        # rising Zzz above the right eye
+        drift = (i % 6) * 5
+        bx, by = EYE_CX_R + 80, EYE_CY - 70
+        d.text((bx - drift, by - drift), "z", fill=ACCENT_DIM, font=f_small)
+        d.text((bx + 26 - drift, by - 38 - drift), "z", fill=ACCENT, font=f_med)
+        d.text((bx + 64 - drift, by - 90 - drift), "Z", fill=EYE, font=f_big)
+        _save(img, "sleep", i + 1)
+
+
 def gen_idle() -> None:
     # gentle blink loop: open, open, open, half, closed, half, open, open
     sequence = [1.0, 1.0, 1.0, 1.0, 0.5, 0.08, 0.5, 1.0]
@@ -197,10 +218,11 @@ def gen_warmup() -> None:
 
 
 def main() -> None:
-    states = ["idle", "listening", "thinking", "speaking", "error", "capturing", "warmup"]
+    states = ["idle", "sleep", "listening", "thinking", "speaking", "error", "capturing", "warmup"]
     for state in states:
         for old in (FACES / state).glob("*.png"):
             old.unlink()
+    gen_sleep()
     gen_idle()
     gen_listening()
     gen_thinking()

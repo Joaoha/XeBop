@@ -70,6 +70,24 @@ def _save(img: Image.Image, state: str, idx: int) -> None:
     img.save(out / f"{state}_{idx:02d}.png", "PNG")
 
 
+def gen_sleep() -> None:
+    cx, cy = W // 2, H // 2
+    f_small, f_med, f_big = _font(28), _font(42), _font(60)
+    for i in range(6):
+        img = _base()
+        d = ImageDraw.Draw(img)
+        # closed eyes: two short arcs
+        for ex in (cx - 70, cx + 70):
+            d.arc((ex - 30, cy - 16, ex + 30, cy + 20), start=200, end=340, fill=BLUE, width=4)
+        drift = (i % 6) * 5
+        bx, by = cx + 60, cy - 70
+        d.text((bx - drift, by - drift), "z", fill=BLUE_DIM, font=f_small)
+        d.text((bx + 26 - drift, by - 38 - drift), "z", fill=BLUE, font=f_med)
+        d.text((bx + 64 - drift, by - 90 - drift), "Z", fill=WHITE, font=f_big)
+        _label(img, "sleep")
+        _save(img, "sleep", i + 1)
+
+
 def gen_idle() -> None:
     img = _base()
     d = ImageDraw.Draw(img)
@@ -176,9 +194,10 @@ def gen_warmup() -> None:
 
 
 def main() -> None:
-    for state in ["idle", "listening", "thinking", "speaking", "error", "capturing", "warmup"]:
+    for state in ["idle", "sleep", "listening", "thinking", "speaking", "error", "capturing", "warmup"]:
         for old in (FACES / state).glob("*.png"):
             old.unlink()
+    gen_sleep()
     gen_idle()
     gen_listening()
     gen_thinking()

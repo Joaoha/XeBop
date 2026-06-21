@@ -238,13 +238,14 @@ def choose_input_samplerate(device, preferred=None):
     return int(candidates[0]) if candidates else 44100
 
 class BotStates:
-    IDLE = "idle"             
-    LISTENING = "listening"   
-    THINKING = "thinking"     
-    SPEAKING = "speaking"     
-    ERROR = "error"           
-    CAPTURING = "capturing" 
-    WARMUP = "warmup"       
+    IDLE = "idle"
+    SLEEP = "sleep"           # resting between visitors / after "go to sleep"
+    LISTENING = "listening"
+    THINKING = "thinking"
+    SPEAKING = "speaking"
+    ERROR = "error"
+    CAPTURING = "capturing"
+    WARMUP = "warmup"
 
 # --- SYSTEM PROMPT (greeter persona) ---
 def _load_greeter_persona():
@@ -333,7 +334,7 @@ class BotGUI:
         log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
         self.visitor_log = VisitorLog(
             path=log_cfg.get("path", "visitor_log.jsonl"),
-            mode=log_cfg.get("mode", "minimal"),
+            mode=log_cfg.get("mode", "standard"),
             retention_days=int(log_cfg.get("retention_days", 7)),
             salt=log_cfg.get("salt", ""),
         )
@@ -465,7 +466,7 @@ class BotGUI:
 
     def load_animations(self):
         base_path = BRANDING.get("faces_dir", "faces")
-        states = ["idle", "listening", "thinking", "speaking", "error", "capturing", "warmup"] 
+        states = ["idle", "sleep", "listening", "thinking", "speaking", "error", "capturing", "warmup"]
         for state in states:
             folder = os.path.join(base_path, state)
             self.animations[state] = []
@@ -801,7 +802,7 @@ class BotGUI:
         print("Models loaded.", flush=True)
 
     def detect_wake_word_or_ptt(self):
-        self.set_state(BotStates.IDLE, "Waiting...")
+        self.set_state(BotStates.SLEEP, "Say my name to wake me")
         self.ptt_event.clear()
         
         if self.oww_model: self.oww_model.reset()

@@ -104,6 +104,21 @@ def _visit_photo_path(visit_id):
     return None
 
 
+def _photo_entries():
+    """Check-in records whose photo file is still on disk, newest first."""
+    log = _visitor_log()
+    out = []
+    for e in log.entries():
+        if e.get("kind") == "check_in" and e.get("visit_id") and _visit_photo_path(e["visit_id"]):
+            out.append({
+                "visit_id": e["visit_id"],
+                "name": _display_visitor(e.get("visitor")),
+                "ts": e.get("ts", ""),
+            })
+    out.sort(key=lambda x: x["ts"], reverse=True)
+    return out
+
+
 def _phrase_fields(cfg):
     effective = {**DEFAULT_PHRASES, **(cfg.get("phrases") or {})}
     return [
@@ -260,6 +275,7 @@ def create_app() -> Flask:
             phrase_fields=_phrase_fields(cfg),
             on_site=on_site,
             history=history,
+            photos=_photo_entries(),
         )
 
     # ---- visitors -------------------------------------------------------
@@ -294,6 +310,35 @@ def create_app() -> Flask:
         if path is None:
             abort(404)
         return send_file(path, mimetype="image/jpeg")
+
+    # ---- photo management ----------------------------------------------
+    @app.route("/photos/delete/<visit_id>", methods=["POST"])
+    def photo_delete(visit_id):
+        path = _visit_photo_path(visit_id)
+        if path is not None:
+            try:
+                path.unlink()
+                flash("Photo deleted.", "ok")
+            except OSError as exc:
+                flash(f"Could not delete photo: {exc}", "error")
+        else:
+            flash("Photo not found.", "error")
+        return redirect(url_for("index", _anchor="photos"))
+
+    @app.route("/photos/delete_all", methods=["POST"])
+    def photos_delete_all():
+        cfg = merged_config().get("visitor_log") or {}
+        photo_dir = (ROOT / cfg.get("photo_dir", "visitor_photos")).resolve()
+        n = 0
+        if photo_dir.exists():
+            for p in photo_dir.glob("*.jpg"):
+                try:
+                    p.unlink()
+                    n += 1
+                except OSError:
+                    pass
+        flash(f"Deleted {n} photo(s).", "ok")
+        return redirect(url_for("index", _anchor="photos"))
 
     # ---- saves ----------------------------------------------------------
     @app.route("/save/audio", methods=["POST"])
