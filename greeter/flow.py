@@ -23,6 +23,7 @@ class FlowState(str, Enum):
     AWAITING_VISITOR_NAME = "awaiting_visitor_name"
     AWAITING_HOST_NAME = "awaiting_host_name"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
+    AWAITING_CHECKOUT_NAME = "awaiting_checkout_name"
     NOTIFYING = "notifying"
     DONE = "done"
 
@@ -76,6 +77,23 @@ CheckInHook = Callable[[str, Optional["Employee"]], None]
 
 
 def _noop_check_in(visitor_name: str, host: Optional["Employee"]) -> None:
+    return None
+
+
+# Look up a returning visitor's still-open visit by name (the app wires this to
+# VisitorLog.find_open_visit). Returns the visit dict, or None if not on-site.
+OpenVisitLookup = Callable[[str], Optional[dict]]
+
+# Close a visit on departure: (visit_dict, spoken_visitor_name). The app writes
+# the check_out row and notifies the host.
+CheckOutHook = Callable[[dict, str], None]
+
+
+def _noop_lookup(name: str) -> Optional[dict]:
+    return None
+
+
+def _noop_check_out(visit: dict, visitor_name: str) -> None:
     return None
 
 
@@ -189,7 +207,33 @@ DEFAULT_PHRASES = {
     "already_on_way": "They're on their way. Please have a seat.",
     # Spoken by agent.py when a turn produced no transcription:
     "didnt_catch": "I didn't catch that. Could you say it again?",
+    # Check-out (visitor leaving):
+    "checkout_ask_name": "Sure — what name did you check in under, so I can sign you out?",
+    "checkout_done": "Thanks {name}, you're all signed out. Take care!",
+    "checkout_not_found": "Hmm, I don't see you checked in. What name did you check in under?",
+    "checkout_not_found_giveup": "I can't find your check-in — no worries, have a great day!",
+    # Notification SENT TO THE HOST when their visitor leaves (not spoken):
+    "exit_notice": "{visitor} has checked out and left the building.",
 }
+
+
+# First-utterance check-out intent. Phrases are matched against the normalized
+# text (apostrophes stripped, lowercased); single words against its tokens.
+_CHECKOUT_PHRASES = (
+    "checking out", "check out", "checkout", "heading out", "head out",
+    "going home", "sign out", "signing out", "im leaving", "im out", "im off",
+    "leaving now",
+)
+_CHECKOUT_WORDS = {"leaving", "goodbye", "bye"}
+
+
+def is_checkout_intent(text: str) -> bool:
+    norm = _normalize(text)
+    if not norm:
+        return False
+    if any(p in norm for p in _CHECKOUT_PHRASES):
+        return True
+    return bool(set(norm.split()) & _CHECKOUT_WORDS)
 
 
 def resolve_phrase(phrases, key, **kw):
@@ -220,6 +264,8 @@ class GreeterFlow:
     notifier: Notifier
     event_logger: EventLogger = field(default=_noop_logger)
     on_check_in: CheckInHook = field(default=_noop_check_in)
+    open_visit_lookup: OpenVisitLookup = field(default=_noop_lookup)
+    on_check_out: CheckOutHook = field(default=_noop_check_out)
     opening_line: str = DEFAULT_OPENING_LINE
     phrases: dict = field(default_factory=dict)
     state: FlowState = FlowState.GREET
@@ -255,6 +301,8 @@ class GreeterFlow:
             return self._on_host_name(text)
         if self.state == FlowState.AWAITING_CONFIRMATION:
             return self._on_confirm(text)
+        if self.state == FlowState.AWAITING_CHECKOUT_NAME:
+            return self._on_checkout_name(text)
         if self.state in (FlowState.NOTIFYING, FlowState.DONE):
             return FlowResult(
                 say=self._say("already_on_way"),
@@ -265,6 +313,11 @@ class GreeterFlow:
         return self.start()
 
     def _on_visitor_name(self, text: str) -> FlowResult:
+        # A returning visitor may open with "I'm leaving" instead of a name.
+        if is_checkout_intent(text):
+            self._retry = 0
+            self.state = FlowState.AWAITING_CHECKOUT_NAME
+            return FlowResult(say=self._say("checkout_ask_name"), state=self.state)
         name = extract_visitor_name(text)
         if not name:
             return FlowResult(
@@ -302,6 +355,26 @@ class GreeterFlow:
             say=self._say("confirm_host"),
             state=self.state,
         )
+
+    def _on_checkout_name(self, text: str) -> FlowResult:
+        name = extract_visitor_name(text)
+        if not name:
+            return FlowResult(say=self._say("didnt_catch_name"), state=self.state)
+        visit = self.open_visit_lookup(name)
+        if visit is None:
+            self._retry += 1
+            if self._retry >= 2:
+                self.state = FlowState.DONE
+                return FlowResult(
+                    say=self._say("checkout_not_found_giveup"),
+                    state=self.state,
+                    done=True,
+                )
+            return FlowResult(say=self._say("checkout_not_found"), state=self.state)
+        self.visitor_name = name
+        self.on_check_out(visit, name)
+        self.state = FlowState.DONE
+        return FlowResult(say=self._say("checkout_done"), state=self.state, done=True)
 
     def _on_confirm(self, text: str) -> FlowResult:
         if _is_yes(text):

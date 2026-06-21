@@ -11,6 +11,7 @@ from greeter.flow import (  # noqa: E402
     FlowState,
     GreeterFlow,
     find_employee,
+    is_checkout_intent,
     load_employees,
 )
 
@@ -131,6 +132,48 @@ class BrandingTests(unittest.TestCase):
         flow.start()
         r = flow.handle("")
         self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME)
+
+
+class CheckoutTests(unittest.TestCase):
+    def test_intent_detection(self):
+        for yes in ["I'm leaving", "checking out", "heading out", "bye", "going home"]:
+            self.assertTrue(is_checkout_intent(yes), yes)
+        for no in ["Alice", "My name is Bob", "I'm here to see Joao", ""]:
+            self.assertFalse(is_checkout_intent(no), no)
+
+    def test_voice_checkout_success(self):
+        visit = {"visit_id": "v1", "host": "Joao Hage", "host_channel_id": "slack:U01"}
+        closed = []
+        flow = GreeterFlow(
+            directory=_dir(),
+            notifier=FakeNotifier(),
+            open_visit_lookup=lambda name: visit if name.lower() == "alice" else None,
+            on_check_out=lambda v, n: closed.append((v["visit_id"], n)),
+        )
+        flow.start()
+        r1 = flow.handle("I'm leaving")
+        self.assertEqual(r1.state, FlowState.AWAITING_CHECKOUT_NAME)
+        r2 = flow.handle("Alice")
+        self.assertTrue(r2.done)
+        self.assertIn("Alice", r2.say)
+        self.assertEqual(closed, [("v1", "Alice")])
+
+    def test_voice_checkout_not_found_gives_up(self):
+        closed = []
+        flow = GreeterFlow(
+            directory=_dir(),
+            notifier=FakeNotifier(),
+            open_visit_lookup=lambda name: None,
+            on_check_out=lambda v, n: closed.append(n),
+        )
+        flow.start()
+        flow.handle("checking out")
+        r1 = flow.handle("Nobody")
+        self.assertEqual(r1.state, FlowState.AWAITING_CHECKOUT_NAME)
+        self.assertFalse(r1.done)
+        r2 = flow.handle("Still nobody")
+        self.assertTrue(r2.done)
+        self.assertEqual(closed, [])
 
 
 class EmployeesFileTests(unittest.TestCase):

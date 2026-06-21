@@ -51,7 +51,7 @@ from duckduckgo_search import DDGS
 # --- GREETER PIPELINE ---
 from greeter.config import load_layered_config
 from greeter.directory import resolve_directory_path
-from greeter.flow import GreeterFlow, FlowState, load_employees, resolve_phrase
+from greeter.flow import Employee, GreeterFlow, FlowState, load_employees, resolve_phrase
 from greeter.notify import make_notifier
 from greeter.visitor_log import VisitorLog
 
@@ -566,6 +566,8 @@ class BotGUI:
             notifier=self.notifier,
             event_logger=self.visitor_log.record,
             on_check_in=self._on_check_in,
+            open_visit_lookup=self.visitor_log.find_open_visit,
+            on_check_out=self._on_check_out,
             opening_line=BRANDING.get("opening_line"),
             phrases=CURRENT_CONFIG.get("phrases") or {},
         )
@@ -596,7 +598,7 @@ class BotGUI:
 
             if result.done:
                 self.wait_for_tts()
-                self.set_state(BotStates.IDLE, "On their way")
+                self.set_state(BotStates.IDLE, "Done")
                 time.sleep(ON_THEIR_WAY_DISPLAY_S)
                 break
 
@@ -992,6 +994,24 @@ class BotGUI:
             self.visitor_log.check_in(visitor_name, host, photo=photo, visit_id=visit_id)
         except Exception as e:
             print(f"[VISIT] check_in failed: {e}", flush=True)
+
+    def _on_check_out(self, visit, visitor_name):
+        """Flow hook: close the visit and tell the host their guest has left."""
+        try:
+            self.visitor_log.check_out(visit.get("visit_id"))
+        except Exception as e:
+            print(f"[VISIT] check_out failed: {e}", flush=True)
+        host_name = visit.get("host")
+        host_channel = visit.get("host_channel_id")
+        if host_name and host_channel:
+            msg = resolve_phrase(
+                CURRENT_CONFIG.get("phrases") or {}, "exit_notice",
+                visitor=visitor_name, host=host_name,
+            )
+            try:
+                self.notifier(Employee(host_name, "", (), host_channel), msg)
+            except Exception as e:
+                print(f"[VISIT] exit notify failed: {e}", flush=True)
 
     # =========================================================================
     # 5. TTS PLUMBING
