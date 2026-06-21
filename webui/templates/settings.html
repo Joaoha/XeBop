@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="tabs" role="tablist">
+  <button class="tab" data-tab="visitors">Visitors</button>
   <button class="tab" data-tab="addressbook">Address Book</button>
   <button class="tab" data-tab="notify">Notifications</button>
   <button class="tab" data-tab="branding">Branding</button>
@@ -9,8 +10,51 @@
   <button class="tab" data-tab="account">Account</button>
 </div>
 
+<!-- ============================ VISITORS ============================ -->
+<section id="visitors" class="panel card">
+  <h2>On site now</h2>
+  {% if on_site %}
+  <table class="emp-table">
+    <thead><tr><th></th><th>Visitor</th><th>Host</th><th>On site</th><th></th></tr></thead>
+    <tbody>
+      {% for v in on_site %}
+      <tr>
+        <td>{% if v.has_photo %}<img src="{{ url_for('visitor_photo', visit_id=v.visit_id) }}" alt="" style="height:40px;border-radius:6px;">{% endif %}</td>
+        <td>{{ v.name }}</td>
+        <td>{{ v.host }}</td>
+        <td class="muted">{{ v.since }}</td>
+        <td>
+          <form method="post" action="{{ url_for('visitor_checkout', visit_id=v.visit_id) }}" class="inline"
+                onsubmit="return confirm('Sign out {{ v.name }}?');">
+            <button class="btn" type="submit">Sign out</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nobody is currently checked in.</p>
+  {% endif %}
+
+  <hr>
+  <h3>Recent activity</h3>
+  {% if history %}
+  <table class="emp-table">
+    <thead><tr><th>When (UTC)</th><th>Visitor</th><th>Host</th><th>Event</th></tr></thead>
+    <tbody>
+      {% for h in history %}
+      <tr><td class="muted">{{ h.ts }}</td><td>{{ h.name }}</td><td>{{ h.host }}</td><td>{{ h.what }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No visitor activity yet.</p>
+  {% endif %}
+</section>
+
 <!-- ============================ ADDRESS BOOK ============================ -->
-<section id="addressbook" class="panel card">
+<section id="addressbook" class="panel card" hidden>
   <h2>Address Book</h2>
   <form method="post" action="{{ url_for('save_directory') }}">
     <fieldset>

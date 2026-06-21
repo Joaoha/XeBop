@@ -19,9 +19,13 @@ from flask import (
     Flask, flash, jsonify, redirect, render_template, request, session, url_for
 )
 
+from flask import abort, send_file
+
 from greeter.config import load_layered_config, load_json_file
 from greeter.directory import resolve_directory_path
-from greeter.flow import DEFAULT_PHRASES, Employee, load_employees
+from greeter.flow import DEFAULT_PHRASES, Employee, load_employees, resolve_phrase
+from greeter.notify import make_notifier
+from greeter.visitor_log import VisitorLog
 from greeter import m365
 from webui import system_info
 from webui.settings_store import (
@@ -55,6 +59,44 @@ def _phrase_value_to_text(value):
     if isinstance(value, (list, tuple)):
         return "\n".join(str(v) for v in value)
     return str(value or "")
+
+
+def _visitor_log():
+    cfg = merged_config().get("visitor_log") or {}
+    return VisitorLog(
+        path=ROOT / cfg.get("path", "visitor_log.jsonl"),
+        mode=cfg.get("mode", "minimal"),
+        retention_days=int(cfg.get("retention_days", 7)),
+        salt=cfg.get("salt", ""),
+    )
+
+
+def _humanize_duration(seconds):
+    if seconds is None:
+        return ""
+    minutes = max(0, seconds // 60)
+    h, m = divmod(minutes, 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+def _display_visitor(encoded):
+    """Hashed names (minimal mode) aren't human-readable — label them."""
+    if isinstance(encoded, str) and encoded.startswith("sha256:"):
+        return "(name hidden)"
+    return encoded or "(unknown)"
+
+
+def _visit_photo_path(visit_id):
+    """Absolute photo path for a visit_id, only if it lives under photo_dir."""
+    cfg = merged_config().get("visitor_log") or {}
+    photo_dir = (ROOT / cfg.get("photo_dir", "visitor_photos")).resolve()
+    for e in _visitor_log().entries():
+        if e.get("visit_id") == visit_id and e.get("kind") == "check_in" and e.get("photo"):
+            p = (ROOT / e["photo"]).resolve()
+            # guard against path traversal via a crafted log/visit_id
+            if str(p).startswith(str(photo_dir)) and p.exists():
+                return p
+    return None
 
 
 def _phrase_fields(cfg):
@@ -178,6 +220,26 @@ def create_app() -> Flask:
             "smtp_password": bool(((cfg.get("notify") or {}).get("email") or {}).get("password")),
             "m365_client_secret": bool(m365_cfg.get("client_secret")),
         }
+        log = _visitor_log()
+        on_site = [
+            {
+                "visit_id": v.get("visit_id"),
+                "name": _display_visitor(v.get("visitor")),
+                "host": v.get("host") or "—",
+                "since": _humanize_duration(v.get("duration_seconds")),
+                "has_photo": bool(_visit_photo_path(v.get("visit_id"))),
+            }
+            for v in log.open_visits()
+        ]
+        history = [
+            {
+                "ts": e.get("ts", ""),
+                "name": _display_visitor(e.get("visitor")),
+                "host": e.get("host") or "—",
+                "what": e.get("kind") or e.get("outcome") or "—",
+            }
+            for e in list(log.entries())[-25:][::-1]
+        ]
         return render_template(
             "settings.html",
             cfg=cfg,
@@ -191,7 +253,42 @@ def create_app() -> Flask:
             aplay_devices=system_info.list_aplay_devices(),
             secrets_set=secrets_set,
             phrase_fields=_phrase_fields(cfg),
+            on_site=on_site,
+            history=history,
         )
+
+    # ---- visitors -------------------------------------------------------
+    @app.route("/visitors/checkout/<visit_id>", methods=["POST"])
+    def visitor_checkout(visit_id):
+        log = _visitor_log()
+        visit = next((v for v in log.open_visits() if v.get("visit_id") == visit_id), None)
+        if visit is None:
+            flash("That visit is already closed or unknown.", "error")
+            return redirect(url_for("index", _anchor="visitors"))
+        log.check_out(visit_id)
+        host_name = visit.get("host")
+        host_channel = visit.get("host_channel_id")
+        if host_name and host_channel:
+            stored = visit.get("visitor")
+            visitor_label = "Your visitor" if (not stored or str(stored).startswith("sha256:")) else stored
+            msg = resolve_phrase(
+                merged_config().get("phrases") or {}, "exit_notice",
+                visitor=visitor_label, host=host_name,
+            )
+            try:
+                make_notifier(merged_config())(Employee(host_name, "", (), host_channel), msg)
+            except Exception as exc:
+                flash(f"Signed out, but host notify failed: {exc}", "error")
+                return redirect(url_for("index", _anchor="visitors"))
+        flash("Signed out.", "ok")
+        return redirect(url_for("index", _anchor="visitors"))
+
+    @app.route("/visitors/photo/<visit_id>")
+    def visitor_photo(visit_id):
+        path = _visit_photo_path(visit_id)
+        if path is None:
+            abort(404)
+        return send_file(path, mimetype="image/jpeg")
 
     # ---- saves ----------------------------------------------------------
     @app.route("/save/audio", methods=["POST"])

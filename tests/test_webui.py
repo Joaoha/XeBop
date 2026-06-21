@@ -84,6 +84,25 @@ class WebUITests(unittest.TestCase):
             self.assertEqual(phrases["ask_host"], ["Who for?", "Who are you seeing?"])
             self.assertNotIn("host_unknown_retry", phrases)
 
+    def test_visitor_checkout_closes_visit(self):
+        from greeter.flow import Employee
+        from greeter.visitor_log import VisitorLog
+        log_path = self.appmod.ROOT / "visitor_log.jsonl"
+        vid = VisitorLog(path=log_path, mode="standard").check_in(
+            "Alice", Employee("Joao Hage", "", (), "slack:U01")
+        )
+        with self.app.test_client() as c:
+            c.post("/login", data={"password": "hunter2", "confirm": "hunter2"})
+            r = c.post(f"/visitors/checkout/{vid}")
+            self.assertEqual(r.status_code, 302)
+        self.assertEqual(VisitorLog(path=log_path, mode="standard").open_visits(), [])
+
+    def test_photo_route_requires_login(self):
+        with self.app.test_client() as c:
+            r = c.get("/visitors/photo/anything")
+            self.assertEqual(r.status_code, 302)
+            self.assertIn("/login", r.headers["Location"])
+
     def test_save_endpoints_require_login(self):
         with self.app.test_client() as c:
             # configure a password but don't log in this client session
