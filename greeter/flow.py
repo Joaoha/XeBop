@@ -211,6 +211,9 @@ DEFAULT_PHRASES = {
     "already_on_way": "They're on their way. Please have a seat.",
     # Spoken by agent.py when a turn produced no transcription:
     "didnt_catch": "I didn't catch that. Could you say it again?",
+    # Quick acknowledgement once the visitor stops speaking (while we
+    # transcribe), so they know they were heard. A list -> picked at random.
+    "ack": ["Got it!", "Okay!", "One moment.", "Sure."],
     # Spoken just before the check-in photo (live preview is on screen):
     "hold_still": "Look at the camera and hold still for your photo.",
     # Check-out (visitor leaving):
@@ -270,21 +273,66 @@ def name_looks_uncertain(name: str) -> bool:
     return len(n.split()) > 3
 
 
+# How Whisper tends to spell back spoken letters — letter-names and the NATO
+# alphabet — mapped to the letter. Single characters are handled separately.
+_PHONETIC = {
+    # letter names / common Whisper spellings
+    "ay": "a", "eh": "a",
+    "be": "b", "bee": "b",
+    "see": "c", "sea": "c", "cee": "c",
+    "de": "d", "dee": "d",
+    "ee": "e",
+    "ef": "f", "eff": "f",
+    "ge": "g", "gee": "g",
+    "aitch": "h", "haitch": "h",
+    "eye": "i", "aye": "i",
+    "jay": "j",
+    "kay": "k",
+    "el": "l", "ell": "l",
+    "em": "m",
+    "en": "n",
+    "oh": "o",
+    "pe": "p", "pee": "p", "pea": "p",
+    "cue": "q", "queue": "q", "kew": "q",
+    "ar": "r", "are": "r",
+    "es": "s", "ess": "s",
+    "te": "t", "tee": "t", "tea": "t",
+    "you": "u", "yu": "u",
+    "ve": "v", "vee": "v",
+    "doubleu": "w", "dub": "w", "dubya": "w",
+    "ex": "x", "eks": "x",
+    "why": "y", "wy": "y",
+    "ze": "z", "zee": "z", "zed": "z",
+    # NATO phonetic alphabet
+    "alpha": "a", "alfa": "a", "bravo": "b", "charlie": "c", "delta": "d",
+    "echo": "e", "foxtrot": "f", "golf": "g", "hotel": "h", "india": "i",
+    "juliet": "j", "juliett": "j", "kilo": "k", "lima": "l", "mike": "m",
+    "november": "n", "oscar": "o", "papa": "p", "quebec": "q", "romeo": "r",
+    "sierra": "s", "tango": "t", "uniform": "u", "victor": "v", "whiskey": "w",
+    "xray": "x", "yankee": "y", "zulu": "z",
+}
+
+
 def reconstruct_spelled_name(text: str) -> str:
     """Rebuild a name from a spelled-out utterance.
 
-    Handles "A L I C E", "A-L-I-C-E", or a plain spoken word. Whisper can't
-    reliably transcribe phonetic letter names ("ay, el, eye, ..."), so this is
-    best-effort: prefer joined single letters, else fall back to the raw word.
+    Handles single letters ("A L I C E" / "A-L-I-C-E"), phonetic letter names
+    ("ay, el, eye, see, ee"), and the NATO alphabet ("alpha lima india...").
+    Tokens that don't map to a letter are treated as noise and dropped. If
+    nothing maps (they just said the name as a word), falls back to the word.
     """
     raw = (text or "").strip()
-    tokens = re.findall(r"[A-Za-z]+", raw)
-    singles = [t for t in tokens if len(t) == 1]
-    if len(singles) >= 2:
-        name = "".join(singles)
-    else:
-        name = re.sub(r"[^A-Za-z]", "", raw)
-    return name.capitalize() if name else ""
+    tokens = re.findall(r"[a-z]+", raw.lower())
+    letters = []
+    for t in tokens:
+        if len(t) == 1:
+            letters.append(t)
+        elif t in _PHONETIC:
+            letters.append(_PHONETIC[t])
+    if len(letters) >= 2:
+        return "".join(letters).capitalize()
+    compact = re.sub(r"[^A-Za-z]", "", raw)
+    return compact.capitalize() if compact else ""
 
 
 def resolve_phrase(phrases, key, **kw):

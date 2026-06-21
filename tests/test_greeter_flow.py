@@ -199,6 +199,16 @@ class NameCaptureTests(unittest.TestCase):
         self.assertEqual(reconstruct_spelled_name("A-L-I-C-E"), "Alice")
         self.assertEqual(reconstruct_spelled_name("Bob"), "Bob")
 
+    def test_reconstruct_phonetic_letter_names(self):
+        # how Whisper often renders spoken letters
+        self.assertEqual(reconstruct_spelled_name("ay el eye see ee"), "Alice")
+        self.assertEqual(reconstruct_spelled_name("bee oh bee"), "Bob")
+
+    def test_reconstruct_nato(self):
+        self.assertEqual(
+            reconstruct_spelled_name("alpha lima india charlie echo"), "Alice"
+        )
+
 
 class CheckoutTests(unittest.TestCase):
     def test_intent_detection(self):

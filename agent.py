@@ -487,11 +487,6 @@ class BotGUI:
                     self.animations[state].append(ImageTk.PhotoImage(blank))
 
     def update_animation(self):
-        # While the live camera preview is up, the preview pump owns the
-        # background label — don't fight it with face frames.
-        if self.preview_active.is_set():
-            self.master.after(100, self.update_animation)
-            return
         frames = self.animations.get(self.current_state, []) or self.animations.get(BotStates.IDLE, [])
         if not frames:
             self.master.after(500, self.update_animation)
@@ -510,10 +505,22 @@ class BotGUI:
         speed = 50 if self.current_state == BotStates.SPEAKING else 500
         self.master.after(speed, self.update_animation)
 
+    def _preview_box(self):
+        """Size/position of the photo box: ~45% screen width, 4:3, upper area."""
+        bw = max(160, int(self.BG_WIDTH * 0.45))
+        bh = int(bw * 3 / 4)
+        x = (self.BG_WIDTH - bw) // 2
+        y = int(self.BG_HEIGHT * 0.06)
+        return x, y, bw, bh
+
     def _show_preview_frame(self, photo):
         # Runs on the Tk thread; keep a ref so it isn't garbage-collected.
+        # The photo sits in its own box ON TOP of the face animation, which
+        # keeps playing underneath.
         self.current_preview_image = photo
-        self.background_label.config(image=photo)
+        x, y, bw, bh = self._preview_box()
+        self.overlay_label.config(image=photo)
+        self.overlay_label.place(x=x, y=y, width=bw, height=bh)
 
     def _preview_pump(self):
         rotation = CURRENT_CONFIG.get("camera_rotation", 0)
@@ -523,14 +530,15 @@ class BotGUI:
                 time.sleep(0.1)
                 continue
             try:
+                _, _, bw, bh = self._preview_box()
                 img = Image.fromarray(frame)
                 img = img.transpose(Image.FLIP_LEFT_RIGHT)  # selfie mirror
                 if rotation:
                     img = img.rotate(rotation, expand=True)
-                scale = min(self.BG_WIDTH / img.width, self.BG_HEIGHT / img.height)
+                scale = min(bw / img.width, bh / img.height)
                 fw, fh = max(1, int(img.width * scale)), max(1, int(img.height * scale))
-                canvas = Image.new('RGB', (self.BG_WIDTH, self.BG_HEIGHT), color='black')
-                canvas.paste(img.resize((fw, fh)), ((self.BG_WIDTH - fw) // 2, (self.BG_HEIGHT - fh) // 2))
+                canvas = Image.new('RGB', (bw, bh), color='black')
+                canvas.paste(img.resize((fw, fh)), ((bw - fw) // 2, (bh - fh) // 2))
                 photo = ImageTk.PhotoImage(canvas)
                 self.master.after(0, self._show_preview_frame, photo)
             except Exception:
@@ -552,6 +560,7 @@ class BotGUI:
         if self.preview_thread:
             self.preview_thread.join(timeout=1.0)
             self.preview_thread = None
+        self.master.after(0, self.overlay_label.place_forget)
 
     def set_state(self, state, msg="", cam_path=None):
         def _update():
@@ -567,7 +576,8 @@ class BotGUI:
                     self.overlay_label.config(image=self.current_overlay_image)
                     self.overlay_label.place(x=200, y=90)
                 except: pass
-            else:
+            elif not self.preview_active.is_set():
+                # Don't tear down the box while the live preview owns it.
                 self.overlay_label.place_forget()
         self.master.after(0, _update)
 
@@ -604,6 +614,19 @@ class BotGUI:
         with self.tts_queue_lock:
             self.tts_queue.append(text)
 
+    def _acknowledge(self):
+        """Let the visitor know they were heard, right when they stop talking.
+
+        Prefer a pre-recorded ack chirp if present; otherwise speak a short
+        word. Runs while we transcribe so the pause doesn't feel like we're
+        still waiting for them to keep talking.
+        """
+        sound = self.get_random_sound(ack_sounds_dir)
+        if sound:
+            self.play_sound(sound)
+        else:
+            self._enqueue_speech(resolve_phrase(CURRENT_CONFIG.get("phrases") or {}, "ack"))
+
     def _capture_one_utterance(self, trigger_source):
         """Listen once and return transcribed text (or empty string)."""
         self.set_state(BotStates.LISTENING, "I'm listening!")
@@ -613,6 +636,10 @@ class BotGUI:
             audio_file = self.record_voice_adaptive()
         if not audio_file:
             return ""
+        # Recording is done — switch to THINKING and acknowledge so the visitor
+        # doesn't think it's still waiting on them while Whisper transcribes.
+        self.set_state(BotStates.THINKING, "Got it…")
+        self._acknowledge()
         text = self.transcribe_audio(audio_file)
         if text:
             self.append_to_text(f"YOU: {text}")
@@ -991,7 +1018,6 @@ class BotGUI:
             wf.setsampwidth(2)
             wf.setframerate(samplerate)
             wf.writeframes(audio_data.tobytes())
-        self.play_sound(self.get_random_sound(ack_sounds_dir))
         return filename
 
     def transcribe_audio(self, filename):
