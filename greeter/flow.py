@@ -69,6 +69,16 @@ def _noop_logger(visitor_name: str, host: Optional["Employee"], outcome: str) ->
     return None
 
 
+# Called when a visitor is confirmed and the host notified (a successful
+# arrival). The hosting app uses this to snap the photo and open the visit
+# record; kept separate from event_logger so the pure flow stays I/O-free.
+CheckInHook = Callable[[str, Optional["Employee"]], None]
+
+
+def _noop_check_in(visitor_name: str, host: Optional["Employee"]) -> None:
+    return None
+
+
 def load_employees(path: str | Path) -> list[Employee]:
     data = json.loads(Path(path).read_text())
     out: list[Employee] = []
@@ -209,6 +219,7 @@ class GreeterFlow:
     directory: list[Employee]
     notifier: Notifier
     event_logger: EventLogger = field(default=_noop_logger)
+    on_check_in: CheckInHook = field(default=_noop_check_in)
     opening_line: str = DEFAULT_OPENING_LINE
     phrases: dict = field(default_factory=dict)
     state: FlowState = FlowState.GREET
@@ -299,7 +310,7 @@ class GreeterFlow:
             message = f"{self.visitor_name} is in the lobby to see you."
             self.notifier(self.host, message)
             self.state = FlowState.DONE
-            self.event_logger(self.visitor_name, self.host, "notified")
+            self.on_check_in(self.visitor_name, self.host)
             result = FlowResult(
                 say=self._say("notified_host"),
                 state=self.state,

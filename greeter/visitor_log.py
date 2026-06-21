@@ -73,9 +73,14 @@ class VisitorLog:
         visitor_name: str,
         host: Optional[Employee],
         photo: Optional[str] = None,
+        visit_id: Optional[str] = None,
     ) -> str:
-        """Open a visit: append a check_in event and return its visit_id."""
-        visit_id = uuid.uuid4().hex[:12]
+        """Open a visit: append a check_in event and return its visit_id.
+
+        A `visit_id` may be supplied so the caller can name the photo file to
+        match before writing the record.
+        """
+        visit_id = visit_id or uuid.uuid4().hex[:12]
         self._append({
             "ts": self._now(),
             "visit_id": visit_id,

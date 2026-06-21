@@ -125,22 +125,18 @@ class VisitLifecycleTests(unittest.TestCase):
 
 
 class FlowIntegrationTests(unittest.TestCase):
-    def test_event_logger_invoked_on_notify(self):
-        events = []
-
-        def logger(name, host, outcome):
-            events.append((name, host.name if host else None, outcome))
-
+    def test_on_check_in_invoked_on_confirm(self):
+        checkins = []
         flow = GreeterFlow(
             directory=[_emp()],
             notifier=lambda e, m: None,
-            event_logger=logger,
+            on_check_in=lambda name, host: checkins.append((name, host.name if host else None)),
         )
         flow.start()
         flow.handle("Alice")
         flow.handle("Joao")
         flow.handle("yes")
-        self.assertEqual(events, [("Alice", "Joao Hage", "notified")])
+        self.assertEqual(checkins, [("Alice", "Joao Hage")])
 
     def test_event_logger_invoked_on_unknown_host(self):
         events = []

@@ -30,6 +30,7 @@ import warnings
 import wave
 import struct
 import shutil
+import uuid
 
 # Suppress harmless library warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
@@ -564,6 +565,7 @@ class BotGUI:
             directory=self.directory,
             notifier=self.notifier,
             event_logger=self.visitor_log.record,
+            on_check_in=self._on_check_in,
             opening_line=BRANDING.get("opening_line"),
             phrases=CURRENT_CONFIG.get("phrases") or {},
         )
@@ -953,6 +955,43 @@ class BotGUI:
         except Exception as e:
             print(f"Camera Error: {e}")
             return None
+
+    def capture_visitor_photo(self, visit_id):
+        """Snap a per-visit photo to <photo_dir>/<visit_id>.jpg.
+
+        Unlike capture_image() this does NOT clobber the LLM's current_image.jpg.
+        Returns the path, or None if disabled or the camera fails (a camera
+        problem must never block a check-in).
+        """
+        log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
+        if not log_cfg.get("capture_photo", True):
+            return None
+        photo_dir = log_cfg.get("photo_dir", "visitor_photos")
+        path = os.path.join(photo_dir, f"{visit_id}.jpg")
+        try:
+            os.makedirs(photo_dir, exist_ok=True)
+            subprocess.run(
+                ["rpicam-still", "-t", "500", "-n", "--width", "640", "--height", "480", "-o", path],
+                check=True,
+            )
+            rotation = CURRENT_CONFIG.get("camera_rotation", 0)
+            if rotation != 0:
+                img = Image.open(path)
+                img = img.rotate(rotation, expand=True)
+                img.save(path)
+            return path
+        except Exception as e:
+            print(f"[PHOTO] Visitor photo capture failed: {e}", flush=True)
+            return None
+
+    def _on_check_in(self, visitor_name, host):
+        """Flow hook: open a visit record with a per-visit photo."""
+        visit_id = uuid.uuid4().hex[:12]
+        photo = self.capture_visitor_photo(visit_id)
+        try:
+            self.visitor_log.check_in(visitor_name, host, photo=photo, visit_id=visit_id)
+        except Exception as e:
+            print(f"[VISIT] check_in failed: {e}", flush=True)
 
     # =========================================================================
     # 5. TTS PLUMBING
