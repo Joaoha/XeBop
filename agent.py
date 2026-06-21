@@ -49,6 +49,7 @@ from duckduckgo_search import DDGS
 
 # --- GREETER PIPELINE ---
 from greeter.config import load_layered_config
+from greeter.directory import resolve_directory_path
 from greeter.flow import GreeterFlow, FlowState, load_employees
 from greeter.notify import make_notifier
 from greeter.visitor_log import VisitorLog
@@ -91,6 +92,16 @@ DEFAULT_CONFIG = {
     "input_sample_rate": None,
     "output_device": None,
     "aplay_device": None,
+    "directory": {
+        "source": "local",          # "local" (employees.json) | "m365" (synced cache)
+        "m365": {
+            "tenant_id": "",
+            "client_id": "",
+            "host_channel": "email",  # how to notify a synced host: "email" | "teams"
+            "cache_path": "m365_directory.json",
+            # client_secret lives in secrets.json, not here
+        },
+    },
     "branding": DEFAULT_BRANDING,
 }
 
@@ -298,11 +309,15 @@ class BotGUI:
         
         # --- GREETER PIPELINE INITIALIZATION ---
         print("[INIT] Loading greeter directory + notifier...", flush=True)
+        directory_path = resolve_directory_path(CURRENT_CONFIG, EMPLOYEES_FILE)
         try:
-            self.directory = load_employees(EMPLOYEES_FILE)
-            print(f"[INIT] Loaded {len(self.directory)} employees.", flush=True)
+            self.directory = load_employees(directory_path)
+            source = (CURRENT_CONFIG.get("directory") or {}).get("source", "local")
+            print(f"[INIT] Loaded {len(self.directory)} employees from {directory_path} (source={source}).", flush=True)
         except Exception as e:
-            print(f"[CRITICAL] Failed to load employees: {e}", flush=True)
+            # Missing/corrupt cache (e.g. M365 never synced) must degrade to an
+            # empty directory, never block boot.
+            print(f"[CRITICAL] Failed to load employees from {directory_path}: {e}", flush=True)
             self.directory = []
 
         self.notifier = make_notifier(CURRENT_CONFIG)

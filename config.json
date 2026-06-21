@@ -9,6 +9,15 @@
   "input_device": null,
   "input_sample_rate": 44100,
   "aplay_device": "plughw:CARD=UACDemoV10,DEV=0",
+  "directory": {
+    "source": "local",
+    "m365": {
+      "tenant_id": "",
+      "client_id": "",
+      "host_channel": "email",
+      "cache_path": "m365_directory.json"
+    }
+  },
   "branding": {
     "agent_name": "XeBop",
     "company_name": "XENON",
