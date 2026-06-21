@@ -28,7 +28,8 @@ import atexit
 import datetime
 import warnings
 import wave
-import struct 
+import struct
+import shutil
 
 # Suppress harmless library warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
@@ -87,6 +88,7 @@ DEFAULT_CONFIG = {
     "input_device": None,
     "input_sample_rate": None,
     "output_device": None,
+    "aplay_device": None,
     "branding": DEFAULT_BRANDING,
 }
 
@@ -955,64 +957,45 @@ class BotGUI:
             else: time.sleep(0.05)
 
     def speak(self, text):
+        """Speak using Piper, then play the generated WAV via ALSA/aplay.
+
+        Piper renders to a WAV which aplay plays directly through ALSA. This
+        avoids Python sounddevice output issues with some USB DACs (e.g. the
+        UACDemo speaker), where the streaming RawOutputStream path stayed
+        silent on the Pi. The ALSA device is set by the "aplay_device" config
+        key (e.g. "plughw:CARD=UACDemoV10,DEV=0"); when unset, aplay uses the
+        system default.
+        """
         clean = re.sub(r"[^\w\s,.!?:-]", "", text)
         if not clean.strip(): return
-        
+
         print(f"[PIPER SPEAKING] '{clean}'", flush=True)
         voice_model = BRANDING.get("voice_model") or CURRENT_CONFIG.get("voice_model", "piper/en_GB-semaine-medium.onnx")
-        
+
+        # Prefer a piper on PATH (matches the deployed Pi); fall back to the
+        # binary setup.sh installs into ./piper/ on a fresh flash.
+        piper_bin = "piper" if shutil.which("piper") else "./piper/piper"
+        aplay_device = CURRENT_CONFIG.get("aplay_device")
+        wav_path = "/tmp/xebop_piper_speech.wav"
+
         try:
-            self.current_audio_process = subprocess.Popen(
-                ["./piper/piper", "--model", voice_model, "--output-raw"], 
-                stdin=subprocess.PIPE, 
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL
+            result = subprocess.run(
+                [piper_bin, "--model", voice_model, "--output_file", wav_path],
+                input=clean, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
             )
-            
-            self.current_audio_process.stdin.write(clean.encode() + b'\n')
-            self.current_audio_process.stdin.close() 
+            if result.returncode != 0:
+                print(f"[PIPER ERROR] Piper failed: {result.stderr}", flush=True)
+                return
 
-            try:
-                device_info = sd.query_devices(OUTPUT_DEVICE_NAME, kind='output') if OUTPUT_DEVICE_NAME is not None else sd.query_devices(kind='output')
-                native_rate = int(device_info['default_samplerate'])
-            except:
-                native_rate = 48000
+            aplay_cmd = ["aplay", "-q"]
+            if aplay_device:
+                aplay_cmd += ["-D", aplay_device]
+            aplay_cmd.append(wav_path)
+            subprocess.run(aplay_cmd, check=False)
 
-            PIPER_RATE = 22050
-            use_native_rate = False
-
-            try:
-                sd.check_output_settings(device=OUTPUT_DEVICE_NAME, samplerate=PIPER_RATE)
-            except:
-                use_native_rate = True
-
-            with sd.RawOutputStream(samplerate=native_rate if use_native_rate else PIPER_RATE,
-                                    channels=1, dtype='int16',
-                                    device=OUTPUT_DEVICE_NAME, latency='low', blocksize=2048) as stream:
-                while True:
-                    if self.interrupted.is_set(): break
-                    data = self.current_audio_process.stdout.read(4096)
-                    if not data: break 
-                    
-                    audio_chunk = np.frombuffer(data, dtype=np.int16)
-                    if len(audio_chunk) > 0:
-                        self.current_volume = np.max(np.abs(audio_chunk))
-                        if use_native_rate:
-                            num_samples = int(len(audio_chunk) * (native_rate / PIPER_RATE))
-                            audio_chunk = scipy.signal.resample(audio_chunk, num_samples).astype(np.int16)
-                        stream.write(audio_chunk.tobytes())
-                    else:
-                        self.current_volume = 0
-                time.sleep(0.5) 
-                    
         except Exception as e:
-            print(f"Audio Error: {e}")
-        finally:
-            self.current_volume = 0 
-            if self.current_audio_process:
-                if self.current_audio_process.stdout: self.current_audio_process.stdout.close()
-                if self.current_audio_process.poll() is None: self.current_audio_process.terminate()
-                self.current_audio_process = None
+            print(f"[PIPER ERROR] speak failed: {e}", flush=True)
 
     def _run_thinking_sound_loop(self):
         time.sleep(0.5)

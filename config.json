@@ -8,6 +8,7 @@
   "system_prompt_extras": "",
   "input_device": null,
   "input_sample_rate": 44100,
+  "aplay_device": "plughw:CARD=UACDemoV10,DEV=0",
   "branding": {
     "agent_name": "XeBop",
     "company_name": "XENON",
