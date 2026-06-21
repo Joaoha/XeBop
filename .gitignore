@@ -38,9 +38,9 @@ m365_directory.json
 # Visitor check-in photos (faces are PII; kept on-device only)
 visitor_photos/
 
-# Keep personal API keys or settings local
-# (Optional: comment this out if you WANT to share your config)
-# config.json
+# Per-device settings (audio devices, wake model, branding, phrases, etc.).
+# Tracked template is config.example.json; each device keeps its own config.json.
+config.json
 
 # --- Temporary/Generated Media ---
 *.wav

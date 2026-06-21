@@ -93,7 +93,11 @@ if [ ! -f "wakeword.onnx" ]; then
     curl -L -o wakeword.onnx https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/hey_jarvis_v0.1.onnx
 fi
 
-# 8. Secrets file (gitignored; passwords + M365 client secret live here)
+# 8. Per-device config + secrets (both gitignored; created from templates)
+if [ ! -f "config.json" ] && [ -f "config.example.json" ]; then
+    echo -e "${YELLOW}Creating config.json from template...${NC}"
+    cp config.example.json config.json
+fi
 if [ ! -f "secrets.json" ] && [ -f "secrets.example.json" ]; then
     echo -e "${YELLOW}Creating secrets.json from template...${NC}"
     cp secrets.example.json secrets.json
