@@ -50,6 +50,17 @@ class ResolvePhraseTests(unittest.TestCase):
         seen = {resolve_phrase({"ask_host": opts}, "ask_host", name="A") for _ in range(25)}
         self.assertTrue(seen.issubset(set(opts)))
 
+    def test_list_valued_default_with_no_override(self):
+        # regression: "ack" defaults to a list; resolving with no override
+        # must pick a variant, not crash on list.format()
+        out = resolve_phrase({}, "ack")
+        self.assertIn(out, DEFAULT_PHRASES["ack"])
+
+    def test_missing_override_for_list_default(self):
+        # a phrases block that lacks "ack" entirely
+        out = resolve_phrase({"confirm_no": "x"}, "ack")
+        self.assertIn(out, DEFAULT_PHRASES["ack"])
+
     def test_empty_list_falls_back_to_default(self):
         self.assertEqual(
             resolve_phrase({"ask_host": []}, "ask_host", name="A"),

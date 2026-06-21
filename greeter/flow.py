@@ -337,26 +337,36 @@ def reconstruct_spelled_name(text: str) -> str:
     return compact.capitalize() if compact else ""
 
 
+def _pick_template(value):
+    """Pick a usable template string from a value that may be a string, a list
+    of strings (one chosen at random), or empty/None. Returns None if unusable."""
+    if isinstance(value, (list, tuple)):
+        variants = [v for v in value if isinstance(v, str) and v.strip()]
+        return random.choice(variants) if variants else None
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
 def resolve_phrase(phrases, key, **kw):
     """Return a ready-to-speak line for ``key``, applying any config override.
 
-    ``phrases`` is the config "phrases" block (may be empty/None). A value can
-    be a string or a list of strings (one picked at random). Falls back to
-    DEFAULT_PHRASES when missing/blank or if a custom template references an
-    unknown placeholder.
+    ``phrases`` is the config "phrases" block (may be empty/None). Both the
+    override AND the default may be a string or a list of strings (one picked
+    at random). Falls back to DEFAULT_PHRASES when the override is missing/blank
+    or references an unknown placeholder.
     """
-    value = (phrases or {}).get(key)
-    if isinstance(value, (list, tuple)):
-        variants = [v for v in value if isinstance(v, str) and v.strip()]
-        template = random.choice(variants) if variants else DEFAULT_PHRASES[key]
-    elif isinstance(value, str) and value.strip():
-        template = value
-    else:
-        template = DEFAULT_PHRASES[key]
+    template = _pick_template((phrases or {}).get(key)) or _pick_template(DEFAULT_PHRASES.get(key))
+    if not template:
+        return ""
     try:
         return template.format(**kw)
     except (KeyError, IndexError):
-        return DEFAULT_PHRASES[key].format(**kw)
+        fallback = _pick_template(DEFAULT_PHRASES.get(key)) or ""
+        try:
+            return fallback.format(**kw)
+        except (KeyError, IndexError):
+            return fallback
 
 
 @dataclass
