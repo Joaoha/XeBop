@@ -43,6 +43,7 @@
     "retention_days": 7,
     "salt": "",
     "capture_photo": true,
-    "photo_dir": "visitor_photos"
+    "photo_dir": "visitor_photos",
+    "preview_seconds": 3
   }
 }

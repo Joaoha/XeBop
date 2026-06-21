@@ -211,6 +211,8 @@ DEFAULT_PHRASES = {
     "already_on_way": "They're on their way. Please have a seat.",
     # Spoken by agent.py when a turn produced no transcription:
     "didnt_catch": "I didn't catch that. Could you say it again?",
+    # Spoken just before the check-in photo (live preview is on screen):
+    "hold_still": "Look at the camera and hold still for your photo.",
     # Check-out (visitor leaving):
     "checkout_ask_name": "Sure — what name did you check in under, so I can sign you out?",
     "checkout_done": "Thanks {name}, you're all signed out. Take care!",

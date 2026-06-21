@@ -11,7 +11,7 @@ echo -e "${GREEN}🤖 Pi Local Assistant Setup Script${NC}"
 # 1. Install System Dependencies (The "Hidden" Requirements)
 echo -e "${YELLOW}[1/6] Installing System Tools (apt)...${NC}"
 sudo apt update
-sudo apt install -y python3-tk python3-dev libasound2-dev portaudio19-dev liblapack-dev libblas-dev cmake build-essential espeak-ng git
+sudo apt install -y python3-tk python3-dev libasound2-dev portaudio19-dev liblapack-dev libblas-dev cmake build-essential espeak-ng git python3-picamera2
 
 # 2. Create Folders
 echo -e "${YELLOW}[2/6] Creating Folders...${NC}"
@@ -55,9 +55,16 @@ curl -L -o voices/bmo-custom.onnx.json "https://github.com/brenpoly/be-more-agen
 
 # 5. Install Python Libraries
 echo -e "${YELLOW}[5/6] Installing Python Libraries...${NC}"
-# Check if venv exists, if not create it
+# Check if venv exists, if not create it.
+# --system-site-packages lets the venv import the apt-installed Picamera2
+# (libcamera) used for the in-GUI camera preview. Without it, XeBop falls
+# back to a one-shot rpicam-still (no live preview).
 if [ ! -d "venv" ]; then
-    python3 -m venv venv
+    python3 -m venv --system-site-packages venv
+fi
+# Flip the flag on an existing venv created without it (idempotent).
+if [ -f "venv/pyvenv.cfg" ]; then
+    sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' venv/pyvenv.cfg
 fi
 source venv/bin/activate
 pip install --upgrade pip

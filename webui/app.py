@@ -53,6 +53,7 @@ PHRASE_META = [
     ("confirm_unclear", "Yes/no answer not understood", []),
     ("already_on_way", "Repeat / already on the way", []),
     ("didnt_catch", "Didn't catch speech (general)", []),
+    ("hold_still", "Before taking the check-in photo", []),
     ("stopped", "Visitor said stop / go to sleep", []),
 ]
 

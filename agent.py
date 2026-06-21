@@ -49,6 +49,7 @@ import ollama
 from duckduckgo_search import DDGS
 
 # --- GREETER PIPELINE ---
+from greeter.camera import CameraManager
 from greeter.config import load_layered_config
 from greeter.directory import resolve_directory_path
 from greeter.flow import Employee, GreeterFlow, FlowState, load_employees, resolve_phrase
@@ -306,8 +307,13 @@ class BotGUI:
         self.tts_queue_lock = threading.Lock() 
         self.tts_thread = None       
         self.tts_active = threading.Event()
-        self.current_audio_process = None 
+        self.current_audio_process = None
         self.exiting = False
+
+        # Camera: single owner for the in-GUI preview + check-in still.
+        self.camera = CameraManager()
+        self.preview_active = threading.Event()
+        self.preview_thread = None
         
         # --- GREETER PIPELINE INITIALIZATION ---
         print("[INIT] Loading greeter directory + notifier...", flush=True)
@@ -394,7 +400,12 @@ class BotGUI:
 
         self.recording_active.clear()
         self.thinking_sound_active.clear()
-        self.tts_active.clear() 
+        self.tts_active.clear()
+        try:
+            self.preview_active.clear()
+            self.camera.stop()
+        except Exception:
+            pass
         
         self.save_chat_history()
         
@@ -476,6 +487,11 @@ class BotGUI:
                     self.animations[state].append(ImageTk.PhotoImage(blank))
 
     def update_animation(self):
+        # While the live camera preview is up, the preview pump owns the
+        # background label — don't fight it with face frames.
+        if self.preview_active.is_set():
+            self.master.after(100, self.update_animation)
+            return
         frames = self.animations.get(self.current_state, []) or self.animations.get(BotStates.IDLE, [])
         if not frames:
             self.master.after(500, self.update_animation)
@@ -493,6 +509,49 @@ class BotGUI:
         
         speed = 50 if self.current_state == BotStates.SPEAKING else 500
         self.master.after(speed, self.update_animation)
+
+    def _show_preview_frame(self, photo):
+        # Runs on the Tk thread; keep a ref so it isn't garbage-collected.
+        self.current_preview_image = photo
+        self.background_label.config(image=photo)
+
+    def _preview_pump(self):
+        rotation = CURRENT_CONFIG.get("camera_rotation", 0)
+        while self.preview_active.is_set():
+            frame = self.camera.read_frame()
+            if frame is None:
+                time.sleep(0.1)
+                continue
+            try:
+                img = Image.fromarray(frame)
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)  # selfie mirror
+                if rotation:
+                    img = img.rotate(rotation, expand=True)
+                scale = min(self.BG_WIDTH / img.width, self.BG_HEIGHT / img.height)
+                fw, fh = max(1, int(img.width * scale)), max(1, int(img.height * scale))
+                canvas = Image.new('RGB', (self.BG_WIDTH, self.BG_HEIGHT), color='black')
+                canvas.paste(img.resize((fw, fh)), ((self.BG_WIDTH - fw) // 2, (self.BG_HEIGHT - fh) // 2))
+                photo = ImageTk.PhotoImage(canvas)
+                self.master.after(0, self._show_preview_frame, photo)
+            except Exception:
+                pass
+            time.sleep(0.07)  # ~14 fps
+
+    def start_preview(self):
+        if not self.camera.available or self.preview_active.is_set():
+            return False
+        if not self.camera.start():
+            return False
+        self.preview_active.set()
+        self.preview_thread = threading.Thread(target=self._preview_pump, daemon=True)
+        self.preview_thread.start()
+        return True
+
+    def stop_preview(self):
+        self.preview_active.clear()
+        if self.preview_thread:
+            self.preview_thread.join(timeout=1.0)
+            self.preview_thread = None
 
     def set_state(self, state, msg="", cam_path=None):
         def _update():
@@ -954,52 +1013,101 @@ class BotGUI:
             print(f"Transcription Error: {e}")
             return ""
 
-    def capture_image(self):
-        self.set_state(BotStates.CAPTURING, "Watching...")
+    def _apply_rotation(self, path):
+        rotation = CURRENT_CONFIG.get("camera_rotation", 0)
+        if rotation:
+            try:
+                img = Image.open(path)
+                img.rotate(rotation, expand=True).save(path)
+            except Exception:
+                pass
+
+    def _rpicam_still(self, path):
+        """One-shot capture via rpicam-still (fallback when Picamera2 absent)."""
         try:
-            subprocess.run(["rpicam-still", "-t", "500", "-n", "--width", "640", "--height", "480", "-o", BMO_IMAGE_FILE], check=True)
-            rotation = CURRENT_CONFIG.get("camera_rotation", 0)
-            if rotation != 0:
-                img = Image.open(BMO_IMAGE_FILE)
-                img = img.rotate(rotation, expand=True) 
-                img.save(BMO_IMAGE_FILE)
-            return BMO_IMAGE_FILE
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            subprocess.run(
+                ["rpicam-still", "-t", "500", "-n", "--width", "640", "--height", "480", "-o", path],
+                check=True,
+            )
+            self._apply_rotation(path)
+            return path
         except Exception as e:
-            print(f"Camera Error: {e}")
+            print(f"[PHOTO] rpicam capture failed: {e}", flush=True)
             return None
 
-    def capture_visitor_photo(self, visit_id):
-        """Snap a per-visit photo to <photo_dir>/<visit_id>.jpg.
+    def capture_image(self):
+        """LLM 'look' capture into current_image.jpg (shares the camera owner)."""
+        self.set_state(BotStates.CAPTURING, "Watching...")
+        if self.camera.available:
+            try:
+                self.camera.start()
+                ok = self.camera.capture_still(BMO_IMAGE_FILE)
+            finally:
+                self.camera.stop()
+            if ok:
+                self._apply_rotation(BMO_IMAGE_FILE)
+                return BMO_IMAGE_FILE
+            return None
+        return self._rpicam_still(BMO_IMAGE_FILE)
 
-        Unlike capture_image() this does NOT clobber the LLM's current_image.jpg.
-        Returns the path, or None if disabled or the camera fails (a camera
-        problem must never block a check-in).
-        """
+    def capture_visitor_photo(self, visit_id):
+        """One-shot per-visit photo (no preview) — used when the camera can't
+        do a live preview. Never clobbers the LLM's current_image.jpg."""
         log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
         if not log_cfg.get("capture_photo", True):
             return None
         photo_dir = log_cfg.get("photo_dir", "visitor_photos")
         path = os.path.join(photo_dir, f"{visit_id}.jpg")
+        if self.camera.available:
+            try:
+                self.camera.start()
+                ok = self.camera.capture_still(path)
+            finally:
+                self.camera.stop()
+            if ok:
+                self._apply_rotation(path)
+                return path
+            return None
+        return self._rpicam_still(path)
+
+    def _capture_with_preview(self, visit_id):
+        """Live self-view in the GUI + 'hold still' + countdown, then capture."""
+        log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
+        photo_dir = log_cfg.get("photo_dir", "visitor_photos")
+        path = os.path.join(photo_dir, f"{visit_id}.jpg")
+        seconds = int(log_cfg.get("preview_seconds", 3))
         try:
             os.makedirs(photo_dir, exist_ok=True)
-            subprocess.run(
-                ["rpicam-still", "-t", "500", "-n", "--width", "640", "--height", "480", "-o", path],
-                check=True,
-            )
-            rotation = CURRENT_CONFIG.get("camera_rotation", 0)
-            if rotation != 0:
-                img = Image.open(path)
-                img = img.rotate(rotation, expand=True)
-                img.save(path)
-            return path
+            self.set_state(BotStates.CAPTURING, "Smile!")
+            if not self.start_preview():
+                return self._rpicam_still(path)  # preview wouldn't start
+            self._enqueue_speech(resolve_phrase(CURRENT_CONFIG.get("phrases") or {}, "hold_still"))
+            self.wait_for_tts()
+            for n in range(max(1, seconds), 0, -1):
+                self.set_state(BotStates.CAPTURING, f"{n}…")
+                time.sleep(1.0)
+            ok = self.camera.capture_still(path)
+            if ok:
+                self._apply_rotation(path)
+            return path if ok else None
         except Exception as e:
-            print(f"[PHOTO] Visitor photo capture failed: {e}", flush=True)
+            print(f"[PHOTO] preview capture failed: {e}", flush=True)
             return None
+        finally:
+            self.stop_preview()
+            self.camera.stop()  # release the device for the LLM 'look' / next visit
 
     def _on_check_in(self, visitor_name, host):
         """Flow hook: open a visit record with a per-visit photo."""
         visit_id = uuid.uuid4().hex[:12]
-        photo = self.capture_visitor_photo(visit_id)
+        log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
+        photo = None
+        if log_cfg.get("capture_photo", True):
+            if self.camera.available:
+                photo = self._capture_with_preview(visit_id)
+            else:
+                photo = self.capture_visitor_photo(visit_id)
         try:
             self.visitor_log.check_in(visitor_name, host, photo=photo, visit_id=visit_id)
         except Exception as e:
