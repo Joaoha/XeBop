@@ -98,6 +98,10 @@ if [ ! -f "config.json" ] && [ -f "config.example.json" ]; then
     echo -e "${YELLOW}Creating config.json from template...${NC}"
     cp config.example.json config.json
 fi
+if [ ! -f "employees.json" ] && [ -f "employees.example.json" ]; then
+    echo -e "${YELLOW}Creating employees.json from template...${NC}"
+    cp employees.example.json employees.json
+fi
 if [ ! -f "secrets.json" ] && [ -f "secrets.example.json" ]; then
     echo -e "${YELLOW}Creating secrets.json from template...${NC}"
     cp secrets.example.json secrets.json

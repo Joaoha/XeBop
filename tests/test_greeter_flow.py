@@ -178,7 +178,7 @@ class CheckoutTests(unittest.TestCase):
 
 class EmployeesFileTests(unittest.TestCase):
     def test_sample_file_loads(self):
-        path = Path(__file__).resolve().parent.parent / "employees.json"
+        path = Path(__file__).resolve().parent.parent / "employees.example.json"
         emps = load_employees(path)
         self.assertGreaterEqual(len(emps), 1)
         for e in emps:
@@ -186,7 +186,7 @@ class EmployeesFileTests(unittest.TestCase):
             self.assertTrue(e.host_channel_id)
 
     def test_sample_file_is_valid_json_with_schema_block(self):
-        path = Path(__file__).resolve().parent.parent / "employees.json"
+        path = Path(__file__).resolve().parent.parent / "employees.example.json"
         data = json.loads(path.read_text())
         self.assertIn("employees", data)
         self.assertIn("_schema", data)

@@ -42,6 +42,9 @@ visitor_photos/
 # Tracked template is config.example.json; each device keeps its own config.json.
 config.json
 
+# Per-site staff directory (real names/contacts). Template: employees.example.json
+employees.json
+
 # --- Temporary/Generated Media ---
 *.wav
 *.mp3
@@ -50,6 +53,15 @@ config.json
 camera_capture.jpg
 current_image.jpg
 test_audio.wav
+
+# --- Cloned deps / downloaded models (provided by setup.sh) ---
+whisper.cpp/
+voices/
+
+# --- Local backups & logs ---
+*.bak
+*.bak.*
+*.log
 
 # --- OS Generated Files ---
 .DS_Store
