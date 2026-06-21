@@ -97,6 +97,20 @@ class WebUITests(unittest.TestCase):
             self.assertEqual(r.status_code, 302)
         self.assertEqual(VisitorLog(path=log_path, mode="standard").open_visits(), [])
 
+    def test_save_visitorlog_writes_config(self):
+        import json as _json
+        with self.app.test_client() as c:
+            c.post("/login", data={"password": "hunter2", "confirm": "hunter2"})
+            c.post("/save/visitorlog", data={
+                "mode": "standard", "retention_days": "30", "preview_seconds": "5",
+                # capture_photo checkbox omitted -> False
+            })
+            vlog = _json.loads(self.cfg.read_text())["visitor_log"]
+            self.assertEqual(vlog["mode"], "standard")
+            self.assertEqual(vlog["retention_days"], 30)
+            self.assertEqual(vlog["preview_seconds"], 5)
+            self.assertFalse(vlog["capture_photo"])
+
     def test_photo_delete_removes_file(self):
         from greeter.flow import Employee
         from greeter.visitor_log import VisitorLog

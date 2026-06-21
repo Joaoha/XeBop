@@ -56,9 +56,32 @@
 
 <!-- ============================ PHOTOS ============================ -->
 <section id="photos" class="panel card" hidden>
-  <h2>Photos</h2>
+  <h2>Photos &amp; visitor log</h2>
+
+  <form method="post" action="{{ url_for('save_visitorlog') }}">
+    <fieldset>
+      <legend>Visitor log &amp; privacy</legend>
+      <label>Store visitor names
+        <select name="mode">
+          <option value="standard" {{ 'selected' if vlog.get('mode', 'standard') != 'minimal' }}>Standard — keep names (shown here)</option>
+          <option value="minimal" {{ 'selected' if vlog.get('mode') == 'minimal' }}>Minimal — hash names (privacy)</option>
+        </select>
+      </label>
+      <label>Keep records for (days)
+        <input type="number" name="retention_days" min="1" value="{{ vlog.get('retention_days', 7) }}">
+      </label>
+      <label class="check"><input type="checkbox" name="capture_photo" {{ 'checked' if vlog.get('capture_photo', True) }}> Take a check-in photo</label>
+      <label>Photo countdown (seconds)
+        <input type="number" name="preview_seconds" min="0" value="{{ vlog.get('preview_seconds', 3) }}">
+      </label>
+    </fieldset>
+    <button class="btn-primary" type="submit">Save visitor-log settings</button>
+  </form>
+
+  <hr>
+  <h3>Photos on device</h3>
   <p class="muted">Check-in photos held on the device. They're auto-deleted after the
-    visitor-log retention window — delete any manually here if needed.</p>
+    retention window above — delete any manually here if needed.</p>
   {% if photos %}
   <form method="post" action="{{ url_for('photos_delete_all') }}" class="inline"
         onsubmit="return confirm('Delete ALL {{ photos|length }} photos? This cannot be undone.');">

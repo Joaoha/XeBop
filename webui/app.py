@@ -277,6 +277,7 @@ def create_app() -> Flask:
             on_site=on_site,
             history=history,
             photos=_photo_entries(),
+            vlog=cfg.get("visitor_log") or {},
         )
 
     # ---- visitors -------------------------------------------------------
@@ -311,6 +312,23 @@ def create_app() -> Flask:
         if path is None:
             abort(404)
         return send_file(path, mimetype="image/jpeg")
+
+    # ---- visitor-log / privacy settings --------------------------------
+    @app.route("/save/visitorlog", methods=["POST"])
+    def save_visitorlog():
+        mode = request.form.get("mode", "standard")
+        if mode not in ("standard", "minimal"):
+            mode = "standard"
+        rd = _clean(request.form.get("retention_days"))
+        ps = _clean(request.form.get("preview_seconds"))
+        save_settings({"visitor_log": {
+            "mode": mode,
+            "retention_days": int(rd) if rd.isdigit() else 7,
+            "capture_photo": _form_bool("capture_photo"),
+            "preview_seconds": int(ps) if ps.isdigit() else 3,
+        }}, CONFIG_PATH, SECRETS_PATH)
+        flash("Visitor-log settings saved. Restart the agent to apply.", "ok")
+        return redirect(url_for("index", _anchor="photos"))
 
     # ---- photo management ----------------------------------------------
     @app.route("/photos/delete/<visit_id>", methods=["POST"])
