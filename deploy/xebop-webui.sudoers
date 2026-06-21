@@ -1,0 +1,6 @@
+# Lets the web UI restart ONLY the agent service, with no password and nothing
+# else. Install with correct ownership/perms (root:root, 0440), validated:
+#   sudo install -m 0440 deploy/xebop-webui.sudoers /etc/sudoers.d/xebop-webui
+#   sudo visudo -cf /etc/sudoers.d/xebop-webui
+# Replace 'pi' if the web UI runs as a different user.
+pi ALL=(root) NOPASSWD: /usr/bin/systemctl restart xebop-agent.service

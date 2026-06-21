@@ -93,4 +93,16 @@ if [ ! -f "wakeword.onnx" ]; then
     curl -L -o wakeword.onnx https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/hey_jarvis_v0.1.onnx
 fi
 
+# 8. Secrets file (gitignored; passwords + M365 client secret live here)
+if [ ! -f "secrets.json" ] && [ -f "secrets.example.json" ]; then
+    echo -e "${YELLOW}Creating secrets.json from template...${NC}"
+    cp secrets.example.json secrets.json
+fi
+
 echo -e "${GREEN}✨ Setup Complete! Run 'source venv/bin/activate' then 'python agent.py'${NC}"
+echo -e "${GREEN}Settings web UI: './start_webui.sh' then open http://<pi-ip>:8080 (set a password on first visit).${NC}"
+echo -e "${YELLOW}Optional — run the UI + agent as services (enables the 'Restart agent' button):${NC}"
+echo    "  sudo cp deploy/xebop-webui.service deploy/xebop-agent.service /etc/systemd/system/"
+echo    "  sudo install -m 0440 deploy/xebop-webui.sudoers /etc/sudoers.d/xebop-webui   # scoped restart permission"
+echo    "  # edit User=/paths/DISPLAY in the unit files to match your setup, then:"
+echo    "  sudo systemctl daemon-reload && sudo systemctl enable --now xebop-webui xebop-agent"

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card narrow">
+  {% if configured %}
+    <h1>Log in</h1>
+    <form method="post" action="{{ url_for('login') }}">
+      <label>Password
+        <input type="password" name="password" autocomplete="current-password" autofocus required>
+      </label>
+      <button class="btn-primary" type="submit">Log in</button>
+    </form>
+  {% else %}
+    <h1>Set an admin password</h1>
+    <p class="muted">This is the first run. Choose a password to protect the settings site.</p>
+    <form method="post" action="{{ url_for('login') }}">
+      <label>New password
+        <input type="password" name="password" autocomplete="new-password" minlength="6" autofocus required>
+      </label>
+      <label>Confirm password
+        <input type="password" name="confirm" autocomplete="new-password" minlength="6" required>
+      </label>
+      <button class="btn-primary" type="submit">Set password &amp; continue</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

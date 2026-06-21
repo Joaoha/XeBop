@@ -1,0 +1,21 @@
+# XeBop agent (the greeter) — install to /etc/systemd/system/xebop-agent.service
+# This is what the web UI's "Restart agent" button restarts. The agent drives a
+# Tk fullscreen UI, so it needs the graphical session's DISPLAY/XAUTHORITY —
+# adjust the Environment= lines and User= to match your desktop autologin.
+#   sudo systemctl daemon-reload && sudo systemctl enable --now xebop-agent
+[Unit]
+Description=XeBop greeter agent
+After=graphical.target sound.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/XeBop
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+ExecStart=/home/pi/XeBop/start_agent.sh
+Restart=on-failure
+
+[Install]
+WantedBy=graphical.target

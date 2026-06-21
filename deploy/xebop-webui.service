@@ -1,0 +1,19 @@
+# XeBop settings web UI — install to /etc/systemd/system/xebop-webui.service
+# Edit User= and the paths if your checkout/user differ, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now xebop-webui
+[Unit]
+Description=XeBop settings web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/XeBop
+ExecStart=/home/pi/XeBop/start_webui.sh
+Restart=on-failure
+# Runs as an unprivileged user. The only privileged action (restarting the
+# agent) goes through the narrowly-scoped sudoers rule in xebop-webui.sudoers.
+
+[Install]
+WantedBy=multi-user.target

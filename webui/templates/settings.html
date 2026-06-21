@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="tabs" role="tablist">
+  <button class="tab" data-tab="addressbook">Address Book</button>
+  <button class="tab" data-tab="notify">Notifications</button>
+  <button class="tab" data-tab="branding">Branding</button>
+  <button class="tab" data-tab="audio">Audio</button>
+  <button class="tab" data-tab="account">Account</button>
+</div>
+
+<!-- ============================ ADDRESS BOOK ============================ -->
+<section id="addressbook" class="panel card">
+  <h2>Address Book</h2>
+  <form method="post" action="{{ url_for('save_directory') }}">
+    <fieldset>
+      <legend>Source</legend>
+      <label class="radio">
+        <input type="radio" name="source" value="local" {{ 'checked' if source == 'local' }}>
+        Local list (employees.json)
+      </label>
+      <label class="radio">
+        <input type="radio" name="source" value="m365" {{ 'checked' if source == 'm365' }}>
+        Microsoft 365 company directory
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Microsoft 365 connection</legend>
+      <p class="muted">App-only access. In Azure: register an app, grant the
+        <code>User.Read.All</code> application permission, and grant admin consent.</p>
+      <label>Tenant ID
+        <input type="text" name="tenant_id" value="{{ m365.tenant_id or '' }}" placeholder="contoso.onmicrosoft.com or GUID">
+      </label>
+      <label>Client ID
+        <input type="text" name="client_id" value="{{ m365.client_id or '' }}">
+      </label>
+      <label>Client secret
+        <input type="password" name="client_secret" autocomplete="new-password"
+               placeholder="{{ '•••••• (set — leave blank to keep)' if secrets_set.m365_client_secret else 'not set' }}">
+      </label>
+      <label>Notify synced hosts via
+        <select name="host_channel">
+          <option value="email" {{ 'selected' if m365.host_channel != 'teams' }}>Email</option>
+          <option value="teams" {{ 'selected' if m365.host_channel == 'teams' }}>Teams</option>
+        </select>
+      </label>
+    </fieldset>
+    <button class="btn-primary" type="submit">Save directory settings</button>
+  </form>
+
+  <hr>
+  <div class="m365-tools">
+    <h3>Microsoft 365 sync</h3>
+    <p class="muted">Test the connection, pull the org directory, then tick who should be
+      greetable. Keep the list to people who actually receive walk-in visitors.</p>
+    <button class="btn" id="m365-test">Test connection</button>
+    <button class="btn" id="m365-sync">Sync directory</button>
+    <span id="m365-status" class="status"></span>
+    <div id="m365-collisions" class="warn-box" hidden></div>
+    <form id="m365-curate-form" hidden>
+      <div class="checklist" id="m365-candidates"></div>
+      <button class="btn-primary" type="submit">Save curated list</button>
+    </form>
+  </div>
+
+  <hr>
+  <div class="local-book">
+    <h3>Local employees</h3>
+    <p class="muted">Used when source is “Local list”. Channel examples:
+      <code>email:jo@acme.com</code>, <code>teams:jo@acme.com</code>, <code>slack:U01ABC</code>.</p>
+    <form method="post" action="{{ url_for('save_local_addressbook') }}" id="local-form">
+      <table class="emp-table" id="emp-table">
+        <thead><tr><th>Name</th><th>Role</th><th>Alt names (comma)</th><th>Channel</th><th></th></tr></thead>
+        <tbody>
+          {% for e in local_employees %}
+          <tr>
+            <td><input name="name" value="{{ e.name }}"></td>
+            <td><input name="role" value="{{ e.role }}"></td>
+            <td><input name="alt_names" value="{{ e.alt_names | join(', ') }}"></td>
+            <td><input name="host_channel_id" value="{{ e.host_channel_id }}"></td>
+            <td><button type="button" class="btn-link row-del">remove</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="button" class="btn" id="emp-add">+ Add employee</button>
+      <input type="hidden" name="employees_json" id="employees_json">
+      <button class="btn-primary" type="submit">Save local list</button>
+    </form>
+  </div>
+</section>
+
+<!-- ============================ NOTIFICATIONS ============================ -->
+<section id="notify" class="panel card" hidden>
+  <h2>Notifications</h2>
+  <form method="post" action="{{ url_for('save_notify') }}">
+    <fieldset>
+      <legend>Email (SMTP)</legend>
+      <label>SMTP host <input name="smtp_host" value="{{ notify.email.host if notify.email else '' }}"></label>
+      <label>Port <input name="smtp_port" type="number" value="{{ notify.email.port if notify.email and notify.email.port else 587 }}"></label>
+      <label>Username <input name="smtp_username" value="{{ notify.email.username if notify.email else '' }}"></label>
+      <label>Password
+        <input type="password" name="smtp_password" autocomplete="new-password"
+               placeholder="{{ '•••••• (set — leave blank to keep)' if secrets_set.smtp_password else 'not set' }}">
+      </label>
+      <label>From address <input name="smtp_from" value="{{ notify.email['from'] if notify.email and notify.email['from'] else '' }}"></label>
+      <label>Subject <input name="smtp_subject" value="{{ notify.email.subject if notify.email and notify.email.subject else 'Visitor at the front desk' }}"></label>
+      <label class="check"><input type="checkbox" name="smtp_starttls" {{ 'checked' if not notify.email or notify.email.use_starttls }}> Use STARTTLS</label>
+      <label class="check"><input type="checkbox" name="smtp_ssl" {{ 'checked' if notify.email and notify.email.use_ssl }}> Use SSL</label>
+    </fieldset>
+    <fieldset>
+      <legend>Webhooks</legend>
+      <label>Microsoft Teams webhook URL <input name="teams_webhook_url" value="{{ notify.teams_webhook_url or '' }}"></label>
+      <label>Slack webhook URL <input name="slack_webhook_url" value="{{ notify.slack_webhook_url or '' }}"></label>
+    </fieldset>
+    <button class="btn-primary" type="submit">Save notifications</button>
+  </form>
+</section>
+
+<!-- ============================ BRANDING ============================ -->
+<section id="branding" class="panel card" hidden>
+  <h2>Branding</h2>
+  <form method="post" action="{{ url_for('save_branding') }}">
+    <label>Agent name <input name="agent_name" value="{{ branding.agent_name or '' }}"></label>
+    <label>Company name <input name="company_name" value="{{ branding.company_name or '' }}"></label>
+    <label>Opening line <input name="opening_line" value="{{ branding.opening_line or '' }}"></label>
+    <label>Wake-word phrase <input name="wake_phrase" value="{{ branding.wake_word.phrase if branding.wake_word else '' }}"></label>
+    <label>Wake-word threshold (0–1)
+      <input name="wake_threshold" type="number" step="0.05" min="0" max="1"
+             value="{{ branding.wake_word.threshold if branding.wake_word and branding.wake_word.threshold is not none else 0.5 }}">
+    </label>
+    <button class="btn-primary" type="submit">Save branding</button>
+  </form>
+</section>
+
+<!-- ============================ AUDIO ============================ -->
+<section id="audio" class="panel card" hidden>
+  <h2>Audio</h2>
+  <form method="post" action="{{ url_for('save_audio') }}">
+    <label>Input device (microphone)
+      <select name="input_device">
+        <option value="">(system default)</option>
+        {% for d in audio.input %}
+        <option value="{{ d.name }}" {{ 'selected' if cfg.input_device == d.name }}>{{ d.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Input sample rate
+      <input name="input_sample_rate" type="number" value="{{ cfg.input_sample_rate or '' }}" placeholder="e.g. 44100 (blank = auto)">
+    </label>
+    <label>Output device (sounddevice — sound effects)
+      <select name="output_device">
+        <option value="">(system default)</option>
+        {% for d in audio.output %}
+        <option value="{{ d.name }}" {{ 'selected' if cfg.output_device == d.name }}>{{ d.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>TTS playback device (aplay / ALSA)
+      <select name="aplay_device">
+        <option value="">(system default)</option>
+        {% for name in aplay_devices %}
+        <option value="{{ name }}" {{ 'selected' if cfg.aplay_device == name }}>{{ name }}</option>
+        {% endfor %}
+        {% if cfg.aplay_device and cfg.aplay_device not in aplay_devices %}
+        <option value="{{ cfg.aplay_device }}" selected>{{ cfg.aplay_device }} (current)</option>
+        {% endif %}
+      </select>
+    </label>
+    <button class="btn-primary" type="submit">Save audio</button>
+  </form>
+</section>
+
+<!-- ============================ ACCOUNT ============================ -->
+<section id="account" class="panel card" hidden>
+  <h2>Account</h2>
+  <form method="post" action="{{ url_for('change_password') }}">
+    <label>New password <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+    <label>Confirm <input type="password" name="confirm" minlength="6" autocomplete="new-password" required></label>
+    <button class="btn-primary" type="submit">Change password</button>
+  </form>
+</section>
+{% endblock %}
