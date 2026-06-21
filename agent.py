@@ -822,7 +822,7 @@ class BotGUI:
         samplerate = choose_input_samplerate(INPUT_DEVICE_NAME, CURRENT_CONFIG.get("input_sample_rate"))
 
         silence_threshold = 0.006
-        silence_duration = 1.5
+        silence_duration = 2.5
         max_record_time = 30.0
         buffer = []
         silent_chunks = 0
