@@ -1233,19 +1233,36 @@ class BotGUI:
         return None
 
     def play_sound(self, file_path):
-        if not file_path or not os.path.exists(file_path): return
+        """Play a .wav effect (startup greeting, thinking hum, etc.).
+
+        Prefer aplay (same ALSA path as TTS — the one that actually reaches the
+        USB DAC; plughw handles any sample rate). Fall back to sounddevice only
+        if aplay isn't available (e.g. a dev box).
+        """
+        if not file_path or not os.path.exists(file_path):
+            return
+        aplay_device = CURRENT_CONFIG.get("aplay_device")
+        try:
+            cmd = ["aplay", "-q"]
+            if aplay_device:
+                cmd += ["-D", aplay_device]
+            cmd.append(file_path)
+            subprocess.run(cmd, check=False)
+            return
+        except FileNotFoundError:
+            pass  # no aplay (not a Pi) — fall through to sounddevice
+        except Exception:
+            return
         try:
             with wave.open(file_path, 'rb') as wf:
                 file_sr = wf.getframerate()
                 data = wf.readframes(wf.getnframes())
                 audio = np.frombuffer(data, dtype=np.int16)
-
             try:
                 device_info = sd.query_devices(OUTPUT_DEVICE_NAME, kind='output') if OUTPUT_DEVICE_NAME is not None else sd.query_devices(kind='output')
                 native_rate = int(device_info['default_samplerate'])
             except:
                 native_rate = 48000
-
             playback_rate = file_sr
             try:
                 sd.check_output_settings(device=OUTPUT_DEVICE_NAME, samplerate=file_sr)
@@ -1253,10 +1270,10 @@ class BotGUI:
                 playback_rate = native_rate
                 num_samples = int(len(audio) * (native_rate / file_sr))
                 audio = scipy.signal.resample(audio, num_samples).astype(np.int16)
-
             sd.play(audio, playback_rate, device=OUTPUT_DEVICE_NAME)
             sd.wait()
-        except: pass
+        except:
+            pass
 
     def load_chat_history(self):
         if os.path.exists(MEMORY_FILE):
