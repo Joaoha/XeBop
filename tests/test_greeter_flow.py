@@ -204,17 +204,16 @@ class NameCaptureTests(unittest.TestCase):
         self.assertEqual(r2.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertEqual(flow.visitor_name, "Alice Smith")
 
-    def test_confirm_no_goes_straight_to_spelling(self):
+    def test_confirm_no_spells_first_then_last(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
         flow.handle("Alice Smith")
-        r = flow.handle("no")                       # not correct -> spell (one step)
-        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
-        r2 = flow.handle("A L I C E")
-        # a spelled (single-word) name still needs a last name
-        self.assertEqual(r2.state, FlowState.AWAITING_LAST_NAME)
+        r = flow.handle("no")                       # not correct -> spell first name
+        self.assertEqual(r.state, FlowState.AWAITING_FIRST_NAME_SPELL)
+        r2 = flow.handle("A L I C E")               # -> spell last name
+        self.assertEqual(r2.state, FlowState.AWAITING_LAST_NAME_SPELL)
         self.assertEqual(flow.visitor_name, "Alice")
-        r3 = flow.handle("Smith")
+        r3 = flow.handle("S M I T H")               # -> confirm full name
         self.assertEqual(r3.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertEqual(flow.visitor_name, "Alice Smith")
 
@@ -222,7 +221,7 @@ class NameCaptureTests(unittest.TestCase):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
         r = flow.handle("Aalsiisson the third esquire")  # >3 words -> uncertain
-        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
+        self.assertEqual(r.state, FlowState.AWAITING_FIRST_NAME_SPELL)
 
     def test_name_uncertainty_heuristic(self):
         self.assertFalse(name_looks_uncertain("Alice"))

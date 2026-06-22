@@ -22,7 +22,8 @@ class FlowState(str, Enum):
     GREET = "greet"
     AWAITING_VISITOR_NAME = "awaiting_visitor_name"
     AWAITING_VISITOR_NAME_CONFIRM = "awaiting_visitor_name_confirm"
-    AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
+    AWAITING_FIRST_NAME_SPELL = "awaiting_first_name_spell"
+    AWAITING_LAST_NAME_SPELL = "awaiting_last_name_spell"
     AWAITING_LAST_NAME = "awaiting_last_name"
     AWAITING_VISITOR_COMPANY = "awaiting_visitor_company"
     AWAITING_COMPANY_CONFIRM = "awaiting_company_confirm"
@@ -225,7 +226,8 @@ DEFAULT_PHRASES = {
     "ask_company": "Which company are you visiting from?",
     "company_confirm": "I heard {company} — is that right?",
     "company_spell_name": "No problem — please spell the company name, one letter at a time.",
-    "spell_name": "No problem — please spell your name, one letter at a time.",
+    "spell_first_name": "No problem — please spell your first name, one letter at a time.",
+    "spell_last_name": "Got it. Now please spell your last name.",
     "returning_visitor": "Welcome back, {name}! You're still checked in to see {host}. Say 'check out' to leave, or tell me who you're here to see now.",
     "ask_host": "Nice to meet you, {name}. Who are you here to see?",
     "host_unknown_retry": "I don't have anyone by that name. Could you spell it?",
@@ -465,8 +467,10 @@ class GreeterFlow:
             return self._on_visitor_name(text)
         if self.state == FlowState.AWAITING_VISITOR_NAME_CONFIRM:
             return self._on_visitor_name_confirm(text)
-        if self.state == FlowState.AWAITING_VISITOR_NAME_SPELL:
-            return self._on_visitor_name_spell(text)
+        if self.state == FlowState.AWAITING_FIRST_NAME_SPELL:
+            return self._on_first_name_spell(text)
+        if self.state == FlowState.AWAITING_LAST_NAME_SPELL:
+            return self._on_last_name_spell(text)
         if self.state == FlowState.AWAITING_LAST_NAME:
             return self._on_last_name(text)
         if self.state == FlowState.AWAITING_VISITOR_COMPANY:
@@ -508,8 +512,8 @@ class GreeterFlow:
         # A garbled-looking name skips straight to spelling; otherwise decide
         # whether we still need a last name.
         if name_looks_uncertain(name):
-            self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
-            return FlowResult(say=self._say("spell_name"), state=self.state)
+            self.state = FlowState.AWAITING_FIRST_NAME_SPELL
+            return FlowResult(say=self._say("spell_first_name"), state=self.state)
         return self._name_next()
 
     def _name_next(self) -> FlowResult:
@@ -536,16 +540,25 @@ class GreeterFlow:
                 return FlowResult(say=self._say("ask_company"), state=self.state)
             return self._after_name()
         if _is_no(text):
-            self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
-            return FlowResult(say=self._say("spell_name"), state=self.state)
+            self.state = FlowState.AWAITING_FIRST_NAME_SPELL
+            return FlowResult(say=self._say("spell_first_name"), state=self.state)
         return FlowResult(say=self._say("confirm_unclear"), state=self.state)
 
-    def _on_visitor_name_spell(self, text: str) -> FlowResult:
-        name = reconstruct_spelled_name(text)
-        if not name:
-            return FlowResult(say=self._say("didnt_catch_name"), state=self.state)
-        self.visitor_name = name
-        return self._name_next()
+    def _on_first_name_spell(self, text: str) -> FlowResult:
+        first = reconstruct_spelled_name(text)
+        if not first:
+            return FlowResult(say=self._say("spell_first_name"), state=self.state)
+        self.visitor_name = first
+        self.state = FlowState.AWAITING_LAST_NAME_SPELL
+        return FlowResult(say=self._say("spell_last_name"), state=self.state)
+
+    def _on_last_name_spell(self, text: str) -> FlowResult:
+        last = reconstruct_spelled_name(text)
+        if not last:
+            return FlowResult(say=self._say("spell_last_name"), state=self.state)
+        self.visitor_name = f"{self.visitor_name} {last}".strip()
+        self.state = FlowState.AWAITING_VISITOR_NAME_CONFIRM
+        return FlowResult(say=self._say("visitor_name_confirm"), state=self.state)
 
     def _on_company(self, text: str) -> FlowResult:
         self.visitor_company = extract_company(text)
