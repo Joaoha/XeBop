@@ -104,7 +104,7 @@ DEFAULT_CONFIG = {
         "bg": "#12141c",
         "img_w": 800, "img_h": 480,
         "eye_y": 200, "eye_l_x": 290, "eye_r_x": 510,
-        "r0": 45, "dr": 22,
+        "gap": 110, "r0": 16, "dr": 8,
     },
     "output_device": None,
     "aplay_device": None,
@@ -548,10 +548,11 @@ class BotGUI:
         ox = (self.BG_WIDTH - img_w * scale) / 2
         oy = (self.BG_HEIGHT - img_h * scale) / 2
         eye_y = oy + m.get("eye_y", 200) * scale
-        self._eye_l = (ox + m.get("eye_l_x", 290) * scale, eye_y)
-        self._eye_r = (ox + m.get("eye_r_x", 510) * scale, eye_y)
-        self._arc_r0 = m.get("r0", 45) * scale
-        self._arc_dr = m.get("dr", 22) * scale
+        eye_l_x = ox + m.get("eye_l_x", 290) * scale
+        eye_r_x = ox + m.get("eye_r_x", 510) * scale
+        gap = m.get("gap", 110) * scale          # distance from eye out to the arc cluster
+        self._arc_r0 = m.get("r0", 16) * scale
+        self._arc_dr = m.get("dr", 8) * scale
         self._arc_max = self._arc_r0 + 3 * self._arc_dr
 
         bg = m.get("bg", "#12141c")
@@ -561,10 +562,13 @@ class BotGUI:
         elif self.meter_style == "arcs":
             mr = int(self._arc_max) + 6
             h = 2 * mr
+            cy = eye_y
+            clx = eye_l_x - gap                  # left cluster sits left of the left eye
+            crx = eye_r_x + gap                  # right cluster sits right of the right eye
             self.arc_l = tk.Canvas(self.master, width=mr, height=h, bg=bg, highlightthickness=0)
-            self.arc_l.place(x=int(self._eye_l[0] - mr), y=int(self._eye_l[1] - mr))
+            self.arc_l.place(x=int(clx - mr), y=int(cy - mr))
             self.arc_r = tk.Canvas(self.master, width=mr, height=h, bg=bg, highlightthickness=0)
-            self.arc_r.place(x=int(self._eye_r[0]), y=int(self._eye_r[1] - mr))
+            self.arc_r.place(x=int(crx), y=int(cy - mr))
 
     def _draw_level_meter(self):
         try:
@@ -588,6 +592,13 @@ class BotGUI:
             c.create_rectangle(0, 0, fill, 16, fill=color, width=0)
 
     def _draw_meter_arcs(self):
+        # Only show the "ears" while actively listening to the visitor.
+        if self.current_state != BotStates.LISTENING:
+            if self.arc_l is not None:
+                self.arc_l.delete("all")
+            if self.arc_r is not None:
+                self.arc_r.delete("all")
+            return
         level = max(0.0, min(1.0, self.current_input_level))
         thresholds = (0.25, 0.50, 0.75, 1.0)
         colors = ("#3fae6b", "#3fae6b", "#c9852b", "#d6534b")  # green, green, amber, red(clip)

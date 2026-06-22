@@ -17,7 +17,7 @@
     "bg": "#12141c",
     "img_w": 800, "img_h": 480,
     "eye_y": 200, "eye_l_x": 290, "eye_r_x": 510,
-    "r0": 45, "dr": 22
+    "gap": 110, "r0": 16, "dr": 8
   },
   "output_device": null,
   "aplay_device": null,
