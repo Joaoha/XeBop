@@ -24,6 +24,7 @@ class FlowState(str, Enum):
     AWAITING_VISITOR_NAME_CONFIRM = "awaiting_visitor_name_confirm"
     AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
     AWAITING_LAST_NAME = "awaiting_last_name"
+    AWAITING_VISITOR_COMPANY = "awaiting_visitor_company"
     AWAITING_RETURNING_CHOICE = "awaiting_returning_choice"
     AWAITING_HOST_NAME = "awaiting_host_name"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
@@ -78,10 +79,10 @@ def _noop_logger(visitor_name: str, host: Optional["Employee"], outcome: str) ->
 # Called when a visitor is confirmed and the host notified (a successful
 # arrival). The hosting app uses this to snap the photo and open the visit
 # record; kept separate from event_logger so the pure flow stays I/O-free.
-CheckInHook = Callable[[str, Optional["Employee"]], None]
+CheckInHook = Callable[[str, Optional["Employee"], str], None]
 
 
-def _noop_check_in(visitor_name: str, host: Optional["Employee"]) -> None:
+def _noop_check_in(visitor_name: str, host: Optional["Employee"], company: str = "") -> None:
     return None
 
 
@@ -180,6 +181,21 @@ def extract_host_query(text: str) -> str:
     return _strip_prefix(text, _HOST_PREFIXES)
 
 
+_COMPANY_PREFIXES = (
+    "i work for ", "i work at ", "i'm with ", "im with ", "i'm from ", "im from ",
+    "from ", "with ", "the company is ", "company is ", "it's ", "its ",
+)
+_NO_COMPANY = {"none", "na", "nan", "independent", "myself", "nobody", "no one", "self", "freelance"}
+
+
+def extract_company(text: str) -> str:
+    """Pull a company name from the answer, or '' if they have none."""
+    norm = _normalize(text)
+    if not norm or norm in _NO_COMPANY or _is_no(text):
+        return ""
+    return _strip_prefix(text, _COMPANY_PREFIXES)
+
+
 def find_employee(query: str, directory: list[Employee]) -> Optional[Employee]:
     if not query:
         return None
@@ -204,6 +220,7 @@ DEFAULT_PHRASES = {
     "didnt_catch_name": "Sorry, I didn't catch your name. Could you say it again?",
     "visitor_name_confirm": "I heard {name} — is that right?",
     "ask_last_name": "Thanks! And your last name?",
+    "ask_company": "Which company are you visiting from?",
     "spell_name": "Could you spell your name for me, one letter at a time?",
     "returning_visitor": "Welcome back, {name}! You're still checked in to see {host}. Say 'check out' to leave, or tell me who you're here to see now.",
     "ask_host": "Nice to meet you, {name}. Who are you here to see?",
@@ -401,8 +418,10 @@ class GreeterFlow:
     on_check_out: CheckOutHook = field(default=_noop_check_out)
     opening_line: str = DEFAULT_OPENING_LINE
     phrases: dict = field(default_factory=dict)
+    ask_company: bool = False  # enabled by the app via config; off by default in tests
     state: FlowState = FlowState.GREET
     visitor_name: str = ""
+    visitor_company: str = ""
     host: Optional[Employee] = None
     _retry: int = 0
     _open_visit: Optional[dict] = None  # set when a returning, still-checked-in visitor is found
@@ -445,6 +464,8 @@ class GreeterFlow:
             return self._on_visitor_name_spell(text)
         if self.state == FlowState.AWAITING_LAST_NAME:
             return self._on_last_name(text)
+        if self.state == FlowState.AWAITING_VISITOR_COMPANY:
+            return self._on_company(text)
         if self.state == FlowState.AWAITING_RETURNING_CHOICE:
             return self._on_returning_choice(text)
         if self.state == FlowState.AWAITING_HOST_NAME:
@@ -501,6 +522,9 @@ class GreeterFlow:
 
     def _on_visitor_name_confirm(self, text: str) -> FlowResult:
         if _is_yes(text):
+            if self.ask_company:
+                self.state = FlowState.AWAITING_VISITOR_COMPANY
+                return FlowResult(say=self._say("ask_company"), state=self.state)
             return self._after_name()
         if _is_no(text):
             self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
@@ -514,9 +538,13 @@ class GreeterFlow:
         self.visitor_name = name
         return self._name_next()
 
+    def _on_company(self, text: str) -> FlowResult:
+        self.visitor_company = extract_company(text)
+        return self._after_name()
+
     def _after_name(self) -> FlowResult:
-        """Name is settled — if they're already checked in, handle that first;
-        otherwise ask who they're here to see."""
+        """Name (and company) settled — if they're already checked in, handle
+        that first; otherwise ask who they're here to see."""
         visit = self.open_visit_lookup(self.visitor_name)
         if visit:
             self._open_visit = visit
@@ -599,7 +627,7 @@ class GreeterFlow:
             message = f"{self.visitor_name} is in the lobby to see you."
             self.notifier(self.host, message)
             self.state = FlowState.DONE
-            self.on_check_in(self.visitor_name, self.host)
+            self.on_check_in(self.visitor_name, self.host, self.visitor_company)
             result = FlowResult(
                 say=self._say("notified_host"),
                 state=self.state,

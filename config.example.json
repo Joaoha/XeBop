@@ -44,6 +44,7 @@
     "salt": "",
     "capture_photo": true,
     "photo_dir": "visitor_photos",
-    "preview_seconds": 3
+    "preview_seconds": 3,
+    "ask_company": true
   }
 }

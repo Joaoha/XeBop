@@ -679,6 +679,7 @@ class BotGUI:
             on_check_out=self._on_check_out,
             opening_line=BRANDING.get("opening_line"),
             phrases=CURRENT_CONFIG.get("phrases") or {},
+            ask_company=bool((CURRENT_CONFIG.get("visitor_log") or {}).get("ask_company", True)),
         )
 
         opening = flow.start()
@@ -1152,7 +1153,7 @@ class BotGUI:
             self.stop_preview()
             self.camera.stop()  # release the device for the LLM 'look' / next visit
 
-    def _on_check_in(self, visitor_name, host):
+    def _on_check_in(self, visitor_name, host, company=""):
         """Flow hook: open a visit record with a per-visit photo."""
         visit_id = uuid.uuid4().hex[:12]
         log_cfg = CURRENT_CONFIG.get("visitor_log") or {}
@@ -1163,7 +1164,7 @@ class BotGUI:
             else:
                 photo = self.capture_visitor_photo(visit_id)
         try:
-            self.visitor_log.check_in(visitor_name, host, photo=photo, visit_id=visit_id)
+            self.visitor_log.check_in(visitor_name, host, photo=photo, visit_id=visit_id, company=company)
         except Exception as e:
             print(f"[VISIT] check_in failed: {e}", flush=True)
 

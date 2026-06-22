@@ -130,7 +130,7 @@ class FlowIntegrationTests(unittest.TestCase):
         flow = GreeterFlow(
             directory=[_emp()],
             notifier=lambda e, m: None,
-            on_check_in=lambda name, host: checkins.append((name, host.name if host else None)),
+            on_check_in=lambda name, host, company="": checkins.append((name, host.name if host else None)),
         )
         flow.start()
         flow.handle("Alice Smith")

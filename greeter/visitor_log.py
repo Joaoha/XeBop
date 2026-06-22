@@ -74,11 +74,13 @@ class VisitorLog:
         host: Optional[Employee],
         photo: Optional[str] = None,
         visit_id: Optional[str] = None,
+        company: str = "",
     ) -> str:
         """Open a visit: append a check_in event and return its visit_id.
 
         A `visit_id` may be supplied so the caller can name the photo file to
-        match before writing the record.
+        match before writing the record. `company` is stored verbatim (it's not
+        privacy-sensitive like the visitor name).
         """
         visit_id = visit_id or uuid.uuid4().hex[:12]
         self._append({
@@ -86,6 +88,7 @@ class VisitorLog:
             "visit_id": visit_id,
             "kind": "check_in",
             "visitor": self._encode_visitor(visitor_name),
+            "company": company or "",
             "host": host.name if host else None,
             "host_channel_id": host.host_channel_id if host else None,
             "photo": photo,

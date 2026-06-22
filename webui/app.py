@@ -44,6 +44,7 @@ PHRASE_META = [
     ("didnt_catch_name", "Didn't catch the visitor's name", []),
     ("visitor_name_confirm", "Confirm the heard name", ["name"]),
     ("ask_last_name", "Ask for the visitor's last name", []),
+    ("ask_company", "Ask which company they're visiting from", []),
     ("spell_name", "Ask the visitor to spell their name", []),
     ("returning_visitor", "Already checked in (returning)", ["name", "host"]),
     ("ask_host", "Ask who they're visiting", ["name"]),
@@ -248,6 +249,7 @@ def create_app() -> Flask:
             {
                 "visit_id": v.get("visit_id"),
                 "name": _display_visitor(v.get("visitor")),
+                "company": v.get("company") or "—",
                 "host": v.get("host") or "—",
                 "since": _humanize_duration(v.get("duration_seconds")),
                 "has_photo": bool(_visit_photo_path(v.get("visit_id"))),
@@ -258,6 +260,7 @@ def create_app() -> Flask:
             {
                 "ts": e.get("ts", ""),
                 "name": _display_visitor(e.get("visitor")),
+                "company": e.get("company") or "—",
                 "host": e.get("host") or "—",
                 "what": e.get("kind") or e.get("outcome") or "—",
             }
@@ -367,6 +370,7 @@ def create_app() -> Flask:
             "retention_days": int(rd) if rd.isdigit() else 7,
             "capture_photo": _form_bool("capture_photo"),
             "preview_seconds": int(ps) if ps.isdigit() else 3,
+            "ask_company": _form_bool("ask_company"),
         }}, CONFIG_PATH, SECRETS_PATH)
         flash("Visitor-log settings saved. Restart the agent to apply.", "ok")
         return redirect(url_for("index", _anchor="photos"))

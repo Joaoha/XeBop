@@ -17,12 +17,13 @@
   <h2>On site now</h2>
   {% if on_site %}
   <table class="emp-table">
-    <thead><tr><th></th><th>Visitor</th><th>Host</th><th>On site</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Visitor</th><th>Company</th><th>Host</th><th>On site</th><th></th></tr></thead>
     <tbody>
       {% for v in on_site %}
       <tr>
         <td>{% if v.has_photo %}<img src="{{ url_for('visitor_photo', visit_id=v.visit_id) }}" alt="" style="height:40px;border-radius:6px;">{% endif %}</td>
         <td>{{ v.name }}</td>
+        <td>{{ v.company }}</td>
         <td>{{ v.host }}</td>
         <td class="muted">{{ v.since }}</td>
         <td>
@@ -43,10 +44,10 @@
   <h3>Recent activity</h3>
   {% if history %}
   <table class="emp-table">
-    <thead><tr><th>When (UTC)</th><th>Visitor</th><th>Host</th><th>Event</th></tr></thead>
+    <thead><tr><th>When (UTC)</th><th>Visitor</th><th>Company</th><th>Host</th><th>Event</th></tr></thead>
     <tbody>
       {% for h in history %}
-      <tr><td class="muted">{{ h.ts }}</td><td>{{ h.name }}</td><td>{{ h.host }}</td><td>{{ h.what }}</td></tr>
+      <tr><td class="muted">{{ h.ts }}</td><td>{{ h.name }}</td><td>{{ h.company }}</td><td>{{ h.host }}</td><td>{{ h.what }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -71,6 +72,7 @@
       <label>Keep records for (days)
         <input type="number" name="retention_days" min="1" value="{{ vlog.get('retention_days', 7) }}">
       </label>
+      <label class="check"><input type="checkbox" name="ask_company" {{ 'checked' if vlog.get('ask_company', True) }}> Ask visitors which company they're from</label>
       <label class="check"><input type="checkbox" name="capture_photo" {{ 'checked' if vlog.get('capture_photo', True) }}> Take a check-in photo</label>
       <label>Photo countdown (seconds)
         <input type="number" name="preview_seconds" min="0" value="{{ vlog.get('preview_seconds', 3) }}">

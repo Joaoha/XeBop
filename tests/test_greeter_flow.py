@@ -247,6 +247,45 @@ class NameCaptureTests(unittest.TestCase):
         )
 
 
+class CompanyTests(unittest.TestCase):
+    def test_company_asked_after_name_and_passed_to_check_in(self):
+        captured = []
+        flow = GreeterFlow(
+            directory=_dir(),
+            notifier=FakeNotifier(),
+            ask_company=True,
+            on_check_in=lambda name, host, company="": captured.append((name, company)),
+        )
+        flow.start()
+        flow.handle("Alice Smith")
+        r = flow.handle("yes")                      # confirm name -> ask company
+        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_COMPANY)
+        r2 = flow.handle("I'm with Acme Corp")      # -> host
+        self.assertEqual(r2.state, FlowState.AWAITING_HOST_NAME)
+        flow.handle("Joao")
+        flow.handle("yes")                          # confirm host -> check in
+        self.assertEqual(captured, [("Alice Smith", "Acme Corp")])
+
+    def test_no_company_accepted(self):
+        captured = []
+        flow = GreeterFlow(
+            directory=_dir(), notifier=FakeNotifier(), ask_company=True,
+            on_check_in=lambda name, host, company="": captured.append(company),
+        )
+        flow.start()
+        flow.handle("Alice Smith"); flow.handle("yes")
+        flow.handle("none")                         # no company
+        flow.handle("Joao"); flow.handle("yes")
+        self.assertEqual(captured, [""])
+
+    def test_company_skipped_when_disabled(self):
+        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())  # ask_company default False
+        flow.start()
+        flow.handle("Alice Smith")
+        r = flow.handle("yes")
+        self.assertEqual(r.state, FlowState.AWAITING_HOST_NAME)
+
+
 class ReturningVisitorTests(unittest.TestCase):
     def _flow(self, closed):
         visit = {"visit_id": "v1", "host": "Joao Hage", "host_channel_id": "slack:U01"}
