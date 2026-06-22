@@ -393,8 +393,8 @@ class BotGUI:
         # Big banner to show what was heard (name / company) during confirmation.
         self.confirm_label = tk.Label(
             master, text="", fg="#ffffff", bg="#11141b",
-            font=("Arial", max(20, int(self.BG_HEIGHT * 0.07)), "bold"),
-            padx=24, pady=12, wraplength=int(self.BG_WIDTH * 0.9), justify=tk.CENTER,
+            font=("Arial", max(14, int(self.BG_HEIGHT * 0.045)), "bold"),
+            padx=16, pady=8, wraplength=int(self.BG_WIDTH * 0.9), justify=tk.CENTER,
         )
 
         # Live mic-input level meter.
@@ -697,7 +697,7 @@ class BotGUI:
         """Show a large on-screen banner (the heard name/company) to confirm."""
         def _update():
             self.confirm_label.config(text=text)
-            self.confirm_label.place(relx=0.5, rely=0.7, anchor=tk.CENTER)
+            self.confirm_label.place(relx=0.5, rely=0.88, anchor=tk.CENTER)
         self.master.after(0, _update)
 
     def clear_confirm_banner(self):
