@@ -74,7 +74,7 @@ INPUT_DEVICE_NAME = None
 # Branding defaults — swappable via config.json "branding" block.
 DEFAULT_BRANDING = {
     "agent_name": "XeBop",
-    "opening_line": "Hi there! Welcome. What's your name?",
+    "opening_line": "Hi there! Welcome — what's your first and last name?",
     "wake_word": {
         "model_path": "./wakeword.onnx",
         "threshold": 0.5,

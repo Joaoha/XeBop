@@ -189,7 +189,7 @@ def find_employee(query: str, directory: list[Employee]) -> Optional[Employee]:
     return None
 
 
-DEFAULT_OPENING_LINE = "Hi there! Welcome. What's your name?"
+DEFAULT_OPENING_LINE = "Hi there! Welcome — what's your first and last name?"
 
 
 # Every line the greeter speaks during the flow, keyed by situation. These are

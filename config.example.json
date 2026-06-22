@@ -23,7 +23,7 @@
   "branding": {
     "agent_name": "XeBop",
     "company_name": "XENON",
-    "opening_line": "Welcome to XENON — what's your name?",
+    "opening_line": "Welcome to XENON — what's your first and last name?",
     "wake_word": {
       "phrase": "Hey XeBop",
       "model_path": "./wakeword.onnx",
