@@ -11,6 +11,7 @@
   "input_sample_rate": null,
   "input_gain": 1.0,
   "noise_reduction": false,
+  "listen_delay": 0.15,
   "output_device": null,
   "aplay_device": null,
   "directory": {

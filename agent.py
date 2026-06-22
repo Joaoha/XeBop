@@ -94,6 +94,7 @@ DEFAULT_CONFIG = {
     "input_sample_rate": None,
     "input_gain": 1.0,          # software mic gain multiplier (1.0 = unchanged)
     "noise_reduction": False,   # high-pass filter to cut low-frequency background
+    "listen_delay": 0.15,       # pause before recording starts (s); lower = snappier
     "output_device": None,
     "aplay_device": None,
     "phrases": {},  # overrides for greeter lines; see greeter.flow.DEFAULT_PHRASES
@@ -999,7 +1000,9 @@ class BotGUI:
 
     def record_voice_adaptive(self, filename="input.wav"):
         print("Recording (Adaptive)...", flush=True)
-        time.sleep(0.5) 
+        # Brief settle so we don't catch the speaker tail/echo; kept small so we
+        # start listening right after the greeter speaks (config: listen_delay).
+        time.sleep(float(CURRENT_CONFIG.get("listen_delay", 0.15) or 0))
         samplerate = choose_input_samplerate(INPUT_DEVICE_NAME, CURRENT_CONFIG.get("input_sample_rate"))
 
         silence_threshold = 0.006
@@ -1046,7 +1049,7 @@ class BotGUI:
 
     def record_voice_ptt(self, filename="input.wav"):
         print("Recording (PTT)...", flush=True)
-        time.sleep(0.5)
+        time.sleep(float(CURRENT_CONFIG.get("listen_delay", 0.15) or 0))
         samplerate = choose_input_samplerate(INPUT_DEVICE_NAME, CURRENT_CONFIG.get("input_sample_rate"))
 
         buffer = []
@@ -1252,7 +1255,7 @@ class BotGUI:
     def wait_for_tts(self):
         while self.tts_queue or self.tts_active.is_set():
             if self.interrupted.is_set(): break
-            time.sleep(0.1)
+            time.sleep(0.02)  # tight poll so we start listening right after speech
 
     def _tts_worker(self):
         while True:
