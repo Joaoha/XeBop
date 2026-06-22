@@ -45,6 +45,8 @@ PHRASE_META = [
     ("visitor_name_confirm", "Confirm the heard name", ["name"]),
     ("ask_last_name", "Ask for the visitor's last name", []),
     ("ask_company", "Ask which company they're visiting from", []),
+    ("spell_offer", "Offer to spell the name (after 'is that right?' = no)", []),
+    ("name_retry", "Re-ask the name (declined spelling)", []),
     ("spell_name", "Ask the visitor to spell their name", []),
     ("returning_visitor", "Already checked in (returning)", ["name", "host"]),
     ("ask_host", "Ask who they're visiting", ["name"]),

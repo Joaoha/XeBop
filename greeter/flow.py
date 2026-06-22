@@ -22,6 +22,7 @@ class FlowState(str, Enum):
     GREET = "greet"
     AWAITING_VISITOR_NAME = "awaiting_visitor_name"
     AWAITING_VISITOR_NAME_CONFIRM = "awaiting_visitor_name_confirm"
+    AWAITING_SPELL_OFFER = "awaiting_spell_offer"
     AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
     AWAITING_LAST_NAME = "awaiting_last_name"
     AWAITING_VISITOR_COMPANY = "awaiting_visitor_company"
@@ -221,6 +222,8 @@ DEFAULT_PHRASES = {
     "visitor_name_confirm": "I heard {name} — is that right?",
     "ask_last_name": "Thanks! And your last name?",
     "ask_company": "Which company are you visiting from?",
+    "spell_offer": "No problem — would you like to spell your name for me?",
+    "name_retry": "No worries — what's your name?",
     "spell_name": "Could you spell your name for me, one letter at a time?",
     "returning_visitor": "Welcome back, {name}! You're still checked in to see {host}. Say 'check out' to leave, or tell me who you're here to see now.",
     "ask_host": "Nice to meet you, {name}. Who are you here to see?",
@@ -460,6 +463,8 @@ class GreeterFlow:
             return self._on_visitor_name(text)
         if self.state == FlowState.AWAITING_VISITOR_NAME_CONFIRM:
             return self._on_visitor_name_confirm(text)
+        if self.state == FlowState.AWAITING_SPELL_OFFER:
+            return self._on_spell_offer(text)
         if self.state == FlowState.AWAITING_VISITOR_NAME_SPELL:
             return self._on_visitor_name_spell(text)
         if self.state == FlowState.AWAITING_LAST_NAME:
@@ -527,8 +532,19 @@ class GreeterFlow:
                 return FlowResult(say=self._say("ask_company"), state=self.state)
             return self._after_name()
         if _is_no(text):
+            self.state = FlowState.AWAITING_SPELL_OFFER
+            return FlowResult(say=self._say("spell_offer"), state=self.state)
+        return FlowResult(say=self._say("confirm_unclear"), state=self.state)
+
+    def _on_spell_offer(self, text: str) -> FlowResult:
+        if _is_yes(text):
             self.state = FlowState.AWAITING_VISITOR_NAME_SPELL
             return FlowResult(say=self._say("spell_name"), state=self.state)
+        if _is_no(text):
+            # Don't want to spell — start the name over.
+            self.visitor_name = ""
+            self.state = FlowState.AWAITING_VISITOR_NAME
+            return FlowResult(say=self._say("name_retry"), state=self.state)
         return FlowResult(say=self._say("confirm_unclear"), state=self.state)
 
     def _on_visitor_name_spell(self, text: str) -> FlowResult:
