@@ -292,7 +292,8 @@ class BotGUI:
         
         # State
         self.current_state = BotStates.WARMUP
-        self.current_volume = 0 
+        self.current_volume = 0
+        self.current_input_level = 0.0  # 0..1 live mic level for the on-screen meter
         self.animations = {}
         self.current_frame_index = 0
         self.current_overlay_image = None
@@ -377,8 +378,13 @@ class BotGUI:
         
         self.exit_button = ttk.Button(master, text="Exit & Save", command=self.safe_exit)
 
+        # Live mic-input level meter (thin bar across the top of the screen).
+        self.level_canvas = tk.Canvas(master, height=16, bg="#11141b", highlightthickness=0)
+        self.level_canvas.place(x=0, y=0, relwidth=1, height=16)
+
         self.load_animations()
-        self.update_animation() 
+        self.update_animation()
+        self._draw_level_meter()
         
         threading.Thread(target=self.safe_main_execution, daemon=True).start()
 
@@ -517,6 +523,22 @@ class BotGUI:
         x = (self.BG_WIDTH - bw) // 2
         y = int(self.BG_HEIGHT * 0.06)
         return x, y, bw, bh
+
+    def _draw_level_meter(self):
+        """Repaint the top mic-level bar; decays smoothly when input is quiet."""
+        try:
+            c = self.level_canvas
+            c.delete("all")
+            w = c.winfo_width() or self.BG_WIDTH
+            level = max(0.0, min(1.0, self.current_input_level))
+            fill = int(w * level)
+            if fill > 0:
+                color = "#3fae6b" if level < 0.6 else ("#c9852b" if level < 0.85 else "#d6534b")
+                c.create_rectangle(0, 0, fill, 16, fill=color, width=0)
+            self.current_input_level *= 0.75  # decay toward zero between updates
+        except Exception:
+            pass
+        self.master.after(60, self._draw_level_meter)
 
     def _show_preview_frame(self, photo):
         # Runs on the Tk thread; keep a ref so it isn't garbage-collected.
@@ -956,6 +978,7 @@ class BotGUI:
                         audio_data = np.clip(audio_data.astype(np.float32) * gain, -32768, 32767).astype(np.int16)
 
                     current_max = np.max(np.abs(audio_data))
+                    self.current_input_level = min(1.0, (current_max / 32768.0) * 4.0)
 
                     # openwakeword is STATEFUL: it builds a rolling mel/embedding
                     # buffer and needs every consecutive frame. Gating predict()
@@ -992,10 +1015,13 @@ class BotGUI:
         recorded_chunks = 0
         silence_started = False
 
+        gain = float(CURRENT_CONFIG.get("input_gain", 1.0) or 1.0)
+
         def callback(indata, frames, time_info, status):
             nonlocal silent_chunks, recorded_chunks, silence_started
             volume_norm = np.linalg.norm(indata) / np.sqrt(len(indata))
-            buffer.append(indata.copy())  
+            self.current_input_level = min(1.0, volume_norm * gain * 4.0)
+            buffer.append(indata.copy())
             recorded_chunks += 1
             if recorded_chunks < 5: return 
             if volume_norm < silence_threshold:
