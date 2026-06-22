@@ -1041,6 +1041,24 @@ class BotGUI:
             
         return self.save_audio_buffer(buffer, filename, samplerate)
 
+    def _denoise(self, audio, sr):
+        """Reduce steady background noise under speech.
+
+        Prefers noisereduce (spectral gating) when installed; otherwise a cheap
+        high-pass filter. Either way it never raises — clean speech matters more
+        than perfect denoising, so any failure just returns the input.
+        """
+        try:
+            import noisereduce as nr
+            return nr.reduce_noise(y=audio, sr=sr, stationary=True).astype(np.float32)
+        except Exception as e:
+            print(f"[AUDIO] noisereduce unavailable ({type(e).__name__}); high-pass fallback", flush=True)
+        try:
+            sos = scipy.signal.butter(2, 120.0, btype="highpass", fs=sr, output="sos")
+            return scipy.signal.sosfilt(sos, audio).astype(np.float32)
+        except Exception:
+            return audio
+
     def save_audio_buffer(self, buffer, filename, samplerate=16000):
         if not buffer: return None
         audio_data = np.concatenate(buffer, axis=0).flatten().astype(np.float32)
@@ -1051,14 +1069,9 @@ class BotGUI:
         if gain != 1.0:
             audio_data = audio_data * gain
 
-        # Light background-noise isolation: high-pass filter removes
-        # low-frequency rumble / hum / HVAC under speech.
+        # Background-noise isolation.
         if CURRENT_CONFIG.get("noise_reduction", False):
-            try:
-                sos = scipy.signal.butter(2, 120.0, btype="highpass", fs=samplerate, output="sos")
-                audio_data = scipy.signal.sosfilt(sos, audio_data).astype(np.float32)
-            except Exception as e:
-                print(f"[AUDIO] noise_reduction skipped: {e}", flush=True)
+            audio_data = self._denoise(audio_data, samplerate)
 
         audio_data = np.clip(audio_data, -1.0, 1.0)
         audio_data = (audio_data * 32767).astype(np.int16)

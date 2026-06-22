@@ -72,6 +72,12 @@ pip install --upgrade pip
 pip install --force-reinstall --no-cache-dir sounddevice
 pip install -r requirements.txt
 
+# Optional: spectral noise reduction for the "Reduce background noise" toggle.
+# Non-fatal — it can pull heavy ARM deps; if it fails the agent falls back to
+# a high-pass filter automatically.
+echo -e "${YELLOW}Installing optional noise reduction (noisereduce)...${NC}"
+pip install noisereduce || echo -e "${RED}noisereduce not installed; high-pass fallback will be used.${NC}"
+
 # 5b. Build whisper.cpp + ggml-small.en model (STT engine agent.py shells out to)
 echo -e "${YELLOW}[5b] Setting up whisper.cpp...${NC}"
 if [ ! -x "./whisper.cpp/build/bin/whisper-cli" ]; then
