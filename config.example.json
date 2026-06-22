@@ -12,6 +12,13 @@
   "input_gain": 1.0,
   "noise_reduction": false,
   "listen_delay": 0.15,
+  "meter": {
+    "style": "arcs",
+    "bg": "#12141c",
+    "img_w": 800, "img_h": 480,
+    "eye_y": 200, "eye_l_x": 290, "eye_r_x": 510,
+    "r0": 45, "dr": 22
+  },
   "output_device": null,
   "aplay_device": null,
   "directory": {

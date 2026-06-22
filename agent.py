@@ -95,6 +95,17 @@ DEFAULT_CONFIG = {
     "input_gain": 1.0,          # software mic gain multiplier (1.0 = unchanged)
     "noise_reduction": False,   # high-pass filter to cut low-frequency background
     "listen_delay": 0.15,       # pause before recording starts (s); lower = snappier
+    # On-screen mic-level meter. "arcs" = concentric arcs beside the eyes (like
+    # ears); "bar" = thin top bar; "off" = none. Geometry is in face-image coords
+    # (the generic faces are 800x480, eyes at y=200, x=290/510) and is mapped
+    # through the same letterboxing as the face, so tune these on the device.
+    "meter": {
+        "style": "arcs",
+        "bg": "#12141c",
+        "img_w": 800, "img_h": 480,
+        "eye_y": 200, "eye_l_x": 290, "eye_r_x": 510,
+        "r0": 45, "dr": 22,
+    },
     "output_device": None,
     "aplay_device": None,
     "phrases": {},  # overrides for greeter lines; see greeter.flow.DEFAULT_PHRASES
@@ -379,9 +390,8 @@ class BotGUI:
         
         self.exit_button = ttk.Button(master, text="Exit & Save", command=self.safe_exit)
 
-        # Live mic-input level meter (thin bar across the top of the screen).
-        self.level_canvas = tk.Canvas(master, height=16, bg="#11141b", highlightthickness=0)
-        self.level_canvas.place(x=0, y=0, relwidth=1, height=16)
+        # Live mic-input level meter.
+        self._setup_level_meter()
 
         self.load_animations()
         self.update_animation()
@@ -525,21 +535,77 @@ class BotGUI:
         y = int(self.BG_HEIGHT * 0.06)
         return x, y, bw, bh
 
+    def _setup_level_meter(self):
+        """Create the mic-meter widget(s) for the configured style."""
+        m = CURRENT_CONFIG.get("meter") or {}
+        self.meter_style = m.get("style", "arcs")
+        self.level_canvas = self.arc_l = self.arc_r = None
+
+        # Map the eye positions from face-image coords through the same
+        # letterboxing the face uses, so the arcs land beside the eyes.
+        img_w, img_h = m.get("img_w", 800), m.get("img_h", 480)
+        scale = min(self.BG_WIDTH / img_w, self.BG_HEIGHT / img_h)
+        ox = (self.BG_WIDTH - img_w * scale) / 2
+        oy = (self.BG_HEIGHT - img_h * scale) / 2
+        eye_y = oy + m.get("eye_y", 200) * scale
+        self._eye_l = (ox + m.get("eye_l_x", 290) * scale, eye_y)
+        self._eye_r = (ox + m.get("eye_r_x", 510) * scale, eye_y)
+        self._arc_r0 = m.get("r0", 45) * scale
+        self._arc_dr = m.get("dr", 22) * scale
+        self._arc_max = self._arc_r0 + 3 * self._arc_dr
+
+        bg = m.get("bg", "#12141c")
+        if self.meter_style == "bar":
+            self.level_canvas = tk.Canvas(self.master, height=16, bg="#11141b", highlightthickness=0)
+            self.level_canvas.place(x=0, y=0, relwidth=1, height=16)
+        elif self.meter_style == "arcs":
+            mr = int(self._arc_max) + 6
+            h = 2 * mr
+            self.arc_l = tk.Canvas(self.master, width=mr, height=h, bg=bg, highlightthickness=0)
+            self.arc_l.place(x=int(self._eye_l[0] - mr), y=int(self._eye_l[1] - mr))
+            self.arc_r = tk.Canvas(self.master, width=mr, height=h, bg=bg, highlightthickness=0)
+            self.arc_r.place(x=int(self._eye_r[0]), y=int(self._eye_r[1] - mr))
+
     def _draw_level_meter(self):
-        """Repaint the top mic-level bar; decays smoothly when input is quiet."""
         try:
-            c = self.level_canvas
-            c.delete("all")
-            w = c.winfo_width() or self.BG_WIDTH
-            level = max(0.0, min(1.0, self.current_input_level))
-            fill = int(w * level)
-            if fill > 0:
-                color = "#3fae6b" if level < 0.6 else ("#c9852b" if level < 0.85 else "#d6534b")
-                c.create_rectangle(0, 0, fill, 16, fill=color, width=0)
+            if self.meter_style == "bar":
+                self._draw_meter_bar()
+            elif self.meter_style == "arcs":
+                self._draw_meter_arcs()
             self.current_input_level *= 0.75  # decay toward zero between updates
         except Exception:
             pass
         self.master.after(60, self._draw_level_meter)
+
+    def _draw_meter_bar(self):
+        c = self.level_canvas
+        c.delete("all")
+        w = c.winfo_width() or self.BG_WIDTH
+        level = max(0.0, min(1.0, self.current_input_level))
+        fill = int(w * level)
+        if fill > 0:
+            color = "#3fae6b" if level < 0.6 else ("#c9852b" if level < 0.85 else "#d6534b")
+            c.create_rectangle(0, 0, fill, 16, fill=color, width=0)
+
+    def _draw_meter_arcs(self):
+        level = max(0.0, min(1.0, self.current_input_level))
+        thresholds = (0.25, 0.50, 0.75, 1.0)
+        colors = ("#3fae6b", "#3fae6b", "#c9852b", "#d6534b")  # green, green, amber, red(clip)
+        dim = "#262b36"
+        mr = int(self._arc_max) + 6
+        width = max(2, int(self._arc_dr * 0.5))
+        for canvas, side in ((self.arc_l, "l"), (self.arc_r, "r")):
+            if canvas is None:
+                continue
+            canvas.delete("all")
+            cx = mr if side == "l" else 0          # arc centre = the eye
+            cy = mr
+            start = 90 if side == "l" else -90      # left semicircle vs right
+            for i in range(4):
+                r = self._arc_r0 + i * self._arc_dr
+                col = colors[i] if level >= thresholds[i] else dim
+                canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
+                                  start=start, extent=180, style="arc", outline=col, width=width)
 
     def _show_preview_frame(self, photo):
         # Runs on the Tk thread; keep a ref so it isn't garbage-collected.
