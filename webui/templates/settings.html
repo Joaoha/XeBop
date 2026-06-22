@@ -318,6 +318,12 @@
     <label>Input sample rate
       <input name="input_sample_rate" type="number" value="{{ cfg.input_sample_rate or '' }}" placeholder="e.g. 44100 (blank = auto)">
     </label>
+    <label>Mic input level (gain)
+      <input name="input_gain" type="number" step="0.1" min="0.1" max="8"
+             value="{{ cfg.input_gain if cfg.input_gain is not none else 1.0 }}">
+      <span class="muted">1.0 = unchanged; raise for a quiet mic (e.g. 2.0), lower if it clips.</span>
+    </label>
+    <label class="check"><input type="checkbox" name="noise_reduction" {{ 'checked' if cfg.noise_reduction }}> Reduce background noise (high-pass filter)</label>
     <label>Output device (sounddevice — sound effects)
       <select name="output_device">
         <option value="">(system default)</option>

@@ -9,6 +9,8 @@
   "system_prompt_extras": "",
   "input_device": null,
   "input_sample_rate": null,
+  "input_gain": 1.0,
+  "noise_reduction": false,
   "output_device": null,
   "aplay_device": null,
   "directory": {

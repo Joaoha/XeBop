@@ -46,12 +46,8 @@ PHRASE_META = [
     ("ask_last_name", "Ask for the visitor's last name", []),
     ("ask_company", "Ask which company they're visiting from", []),
     ("company_confirm", "Confirm the company", ["company"]),
-    ("company_spell_offer", "Offer to spell the company", []),
-    ("company_retry", "Re-ask the company (declined spelling)", []),
     ("company_spell_name", "Ask the visitor to spell the company", []),
-    ("spell_offer", "Offer to spell the name (after 'is that right?' = no)", []),
-    ("name_retry", "Re-ask the name (declined spelling)", []),
-    ("spell_name", "Ask the visitor to spell their name", []),
+    ("spell_name", "Ask the visitor to spell their name (after 'is that right?' = no)", []),
     ("returning_visitor", "Already checked in (returning)", ["name", "host"]),
     ("ask_host", "Ask who they're visiting", ["name"]),
     ("host_unknown_retry", "Host not found — ask again", []),
@@ -417,9 +413,16 @@ def create_app() -> Flask:
             v = _clean(request.form.get(name))
             return v or None
         sr = _clean(request.form.get("input_sample_rate"))
+        gain = _clean(request.form.get("input_gain"))
+        try:
+            input_gain = float(gain) if gain else 1.0
+        except ValueError:
+            input_gain = 1.0
         save_settings({
             "input_device": _opt("input_device"),
             "input_sample_rate": int(sr) if sr.isdigit() else None,
+            "input_gain": input_gain,
+            "noise_reduction": _form_bool("noise_reduction"),
             "output_device": _opt("output_device"),
             "aplay_device": _opt("aplay_device"),
         }, CONFIG_PATH, SECRETS_PATH)

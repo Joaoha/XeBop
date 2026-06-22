@@ -92,6 +92,8 @@ DEFAULT_CONFIG = {
     "system_prompt_extras": "",
     "input_device": None,
     "input_sample_rate": None,
+    "input_gain": 1.0,          # software mic gain multiplier (1.0 = unchanged)
+    "noise_reduction": False,   # high-pass filter to cut low-frequency background
     "output_device": None,
     "aplay_device": None,
     "phrases": {},  # overrides for greeter lines; see greeter.flow.DEFAULT_PHRASES
@@ -687,7 +689,7 @@ class BotGUI:
         self._enqueue_speech(opening.say)
 
         trigger_source = first_trigger_source
-        max_turns = 8  # belt + suspenders cap on a stuck conversation
+        max_turns = 25  # belt + suspenders cap; high enough for name/spell/company detours
 
         for _ in range(max_turns):
             self.wait_for_tts()
@@ -948,9 +950,11 @@ class BotGUI:
                         indices = np.arange(0, len(audio_data), step)[:target_chunk_size].astype(int)
                         audio_data = audio_data[indices]
                     
-                    # Convert to float for model prediction without needing heavy resampling logic
-                    # The wake word model needs 16000, which we just faked above.
-                    
+                    # Apply the same mic gain so a quiet mic still wakes it.
+                    gain = float(CURRENT_CONFIG.get("input_gain", 1.0) or 1.0)
+                    if gain != 1.0:
+                        audio_data = np.clip(audio_data.astype(np.float32) * gain, -32768, 32767).astype(np.int16)
+
                     current_max = np.max(np.abs(audio_data))
 
                     # openwakeword is STATEFUL: it builds a rolling mel/embedding
@@ -1039,8 +1043,24 @@ class BotGUI:
 
     def save_audio_buffer(self, buffer, filename, samplerate=16000):
         if not buffer: return None
-        audio_data = np.concatenate(buffer, axis=0).flatten()
+        audio_data = np.concatenate(buffer, axis=0).flatten().astype(np.float32)
         audio_data = np.nan_to_num(audio_data, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Mic input level (software gain).
+        gain = float(CURRENT_CONFIG.get("input_gain", 1.0) or 1.0)
+        if gain != 1.0:
+            audio_data = audio_data * gain
+
+        # Light background-noise isolation: high-pass filter removes
+        # low-frequency rumble / hum / HVAC under speech.
+        if CURRENT_CONFIG.get("noise_reduction", False):
+            try:
+                sos = scipy.signal.butter(2, 120.0, btype="highpass", fs=samplerate, output="sos")
+                audio_data = scipy.signal.sosfilt(sos, audio_data).astype(np.float32)
+            except Exception as e:
+                print(f"[AUDIO] noise_reduction skipped: {e}", flush=True)
+
+        audio_data = np.clip(audio_data, -1.0, 1.0)
         audio_data = (audio_data * 32767).astype(np.int16)
         with wave.open(filename, "wb") as wf:
             wf.setnchannels(1)

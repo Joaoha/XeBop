@@ -204,14 +204,12 @@ class NameCaptureTests(unittest.TestCase):
         self.assertEqual(r2.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertEqual(flow.visitor_name, "Alice Smith")
 
-    def test_confirm_no_offers_spelling_then_spells(self):
+    def test_confirm_no_goes_straight_to_spelling(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
         flow.start()
         flow.handle("Alice Smith")
-        r = flow.handle("no")                       # not correct -> offer to spell
-        self.assertEqual(r.state, FlowState.AWAITING_SPELL_OFFER)
-        ro = flow.handle("yes")                     # yes, I'll spell
-        self.assertEqual(ro.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
+        r = flow.handle("no")                       # not correct -> spell (one step)
+        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME_SPELL)
         r2 = flow.handle("A L I C E")
         # a spelled (single-word) name still needs a last name
         self.assertEqual(r2.state, FlowState.AWAITING_LAST_NAME)
@@ -219,15 +217,6 @@ class NameCaptureTests(unittest.TestCase):
         r3 = flow.handle("Smith")
         self.assertEqual(r3.state, FlowState.AWAITING_VISITOR_NAME_CONFIRM)
         self.assertEqual(flow.visitor_name, "Alice Smith")
-
-    def test_confirm_no_declining_spell_reasks_name(self):
-        flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
-        flow.start()
-        flow.handle("Alice Smith")
-        flow.handle("no")                           # not correct -> offer to spell
-        r = flow.handle("no")                       # don't want to spell
-        self.assertEqual(r.state, FlowState.AWAITING_VISITOR_NAME)
-        self.assertEqual(flow.visitor_name, "")
 
     def test_uncertain_name_skips_to_spelling(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())
@@ -302,10 +291,8 @@ class CompanyTests(unittest.TestCase):
         flow.start()
         flow.handle("Alice Smith"); flow.handle("yes")
         flow.handle("Acme")                         # company
-        r = flow.handle("no")                       # wrong -> offer to spell
-        self.assertEqual(r.state, FlowState.AWAITING_COMPANY_SPELL_OFFER)
-        ro = flow.handle("yes")                     # yes, spell
-        self.assertEqual(ro.state, FlowState.AWAITING_COMPANY_SPELL)
+        r = flow.handle("no")                       # wrong -> spell (one step)
+        self.assertEqual(r.state, FlowState.AWAITING_COMPANY_SPELL)
         rs = flow.handle("A C M E")                 # -> host
         self.assertEqual(rs.state, FlowState.AWAITING_HOST_NAME)
         flow.handle("Joao"); flow.handle("yes")
