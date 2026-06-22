@@ -26,6 +26,9 @@ class FlowState(str, Enum):
     AWAITING_VISITOR_NAME_SPELL = "awaiting_visitor_name_spell"
     AWAITING_LAST_NAME = "awaiting_last_name"
     AWAITING_VISITOR_COMPANY = "awaiting_visitor_company"
+    AWAITING_COMPANY_CONFIRM = "awaiting_company_confirm"
+    AWAITING_COMPANY_SPELL_OFFER = "awaiting_company_spell_offer"
+    AWAITING_COMPANY_SPELL = "awaiting_company_spell"
     AWAITING_RETURNING_CHOICE = "awaiting_returning_choice"
     AWAITING_HOST_NAME = "awaiting_host_name"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
@@ -222,6 +225,10 @@ DEFAULT_PHRASES = {
     "visitor_name_confirm": "I heard {name} — is that right?",
     "ask_last_name": "Thanks! And your last name?",
     "ask_company": "Which company are you visiting from?",
+    "company_confirm": "I heard {company} — is that right?",
+    "company_spell_offer": "No problem — would you like to spell the company name?",
+    "company_retry": "No worries — which company are you from?",
+    "company_spell_name": "Could you spell the company name, one letter at a time?",
     "spell_offer": "No problem — would you like to spell your name for me?",
     "name_retry": "No worries — what's your name?",
     "spell_name": "Could you spell your name for me, one letter at a time?",
@@ -438,6 +445,7 @@ class GreeterFlow:
             name=self.visitor_name,
             visitor=self.visitor_name,
             host=host_name,
+            company=self.visitor_company,
         )
 
     def start(self) -> FlowResult:
@@ -471,6 +479,12 @@ class GreeterFlow:
             return self._on_last_name(text)
         if self.state == FlowState.AWAITING_VISITOR_COMPANY:
             return self._on_company(text)
+        if self.state == FlowState.AWAITING_COMPANY_CONFIRM:
+            return self._on_company_confirm(text)
+        if self.state == FlowState.AWAITING_COMPANY_SPELL_OFFER:
+            return self._on_company_spell_offer(text)
+        if self.state == FlowState.AWAITING_COMPANY_SPELL:
+            return self._on_company_spell(text)
         if self.state == FlowState.AWAITING_RETURNING_CHOICE:
             return self._on_returning_choice(text)
         if self.state == FlowState.AWAITING_HOST_NAME:
@@ -556,6 +570,34 @@ class GreeterFlow:
 
     def _on_company(self, text: str) -> FlowResult:
         self.visitor_company = extract_company(text)
+        if not self.visitor_company:
+            return self._after_name()  # no company to confirm
+        self.state = FlowState.AWAITING_COMPANY_CONFIRM
+        return FlowResult(say=self._say("company_confirm"), state=self.state)
+
+    def _on_company_confirm(self, text: str) -> FlowResult:
+        if _is_yes(text):
+            return self._after_name()
+        if _is_no(text):
+            self.state = FlowState.AWAITING_COMPANY_SPELL_OFFER
+            return FlowResult(say=self._say("company_spell_offer"), state=self.state)
+        return FlowResult(say=self._say("confirm_unclear"), state=self.state)
+
+    def _on_company_spell_offer(self, text: str) -> FlowResult:
+        if _is_yes(text):
+            self.state = FlowState.AWAITING_COMPANY_SPELL
+            return FlowResult(say=self._say("company_spell_name"), state=self.state)
+        if _is_no(text):
+            self.visitor_company = ""
+            self.state = FlowState.AWAITING_VISITOR_COMPANY
+            return FlowResult(say=self._say("company_retry"), state=self.state)
+        return FlowResult(say=self._say("confirm_unclear"), state=self.state)
+
+    def _on_company_spell(self, text: str) -> FlowResult:
+        company = reconstruct_spelled_name(text)
+        if not company:
+            return FlowResult(say=self._say("company_spell_name"), state=self.state)
+        self.visitor_company = company
         return self._after_name()
 
     def _after_name(self) -> FlowResult:

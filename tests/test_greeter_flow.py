@@ -271,13 +271,16 @@ class CompanyTests(unittest.TestCase):
         flow.handle("Alice Smith")
         r = flow.handle("yes")                      # confirm name -> ask company
         self.assertEqual(r.state, FlowState.AWAITING_VISITOR_COMPANY)
-        r2 = flow.handle("I'm with Acme Corp")      # -> host
-        self.assertEqual(r2.state, FlowState.AWAITING_HOST_NAME)
+        r2 = flow.handle("I'm with Acme Corp")      # -> confirm company
+        self.assertEqual(r2.state, FlowState.AWAITING_COMPANY_CONFIRM)
+        self.assertIn("Acme Corp", r2.say)
+        r3 = flow.handle("yes")                     # company correct -> host
+        self.assertEqual(r3.state, FlowState.AWAITING_HOST_NAME)
         flow.handle("Joao")
         flow.handle("yes")                          # confirm host -> check in
         self.assertEqual(captured, [("Alice Smith", "Acme Corp")])
 
-    def test_no_company_accepted(self):
+    def test_no_company_skips_confirm(self):
         captured = []
         flow = GreeterFlow(
             directory=_dir(), notifier=FakeNotifier(), ask_company=True,
@@ -285,9 +288,28 @@ class CompanyTests(unittest.TestCase):
         )
         flow.start()
         flow.handle("Alice Smith"); flow.handle("yes")
-        flow.handle("none")                         # no company
+        r = flow.handle("none")                     # no company -> straight to host
+        self.assertEqual(r.state, FlowState.AWAITING_HOST_NAME)
         flow.handle("Joao"); flow.handle("yes")
         self.assertEqual(captured, [""])
+
+    def test_company_confirm_no_then_spell(self):
+        captured = []
+        flow = GreeterFlow(
+            directory=_dir(), notifier=FakeNotifier(), ask_company=True,
+            on_check_in=lambda name, host, company="": captured.append(company),
+        )
+        flow.start()
+        flow.handle("Alice Smith"); flow.handle("yes")
+        flow.handle("Acme")                         # company
+        r = flow.handle("no")                       # wrong -> offer to spell
+        self.assertEqual(r.state, FlowState.AWAITING_COMPANY_SPELL_OFFER)
+        ro = flow.handle("yes")                     # yes, spell
+        self.assertEqual(ro.state, FlowState.AWAITING_COMPANY_SPELL)
+        rs = flow.handle("A C M E")                 # -> host
+        self.assertEqual(rs.state, FlowState.AWAITING_HOST_NAME)
+        flow.handle("Joao"); flow.handle("yes")
+        self.assertEqual(captured, ["Acme"])
 
     def test_company_skipped_when_disabled(self):
         flow = GreeterFlow(directory=_dir(), notifier=FakeNotifier())  # ask_company default False
