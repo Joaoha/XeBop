@@ -390,6 +390,13 @@ class BotGUI:
         
         self.exit_button = ttk.Button(master, text="Exit & Save", command=self.safe_exit)
 
+        # Big banner to show what was heard (name / company) during confirmation.
+        self.confirm_label = tk.Label(
+            master, text="", fg="#ffffff", bg="#11141b",
+            font=("Arial", max(20, int(self.BG_HEIGHT * 0.07)), "bold"),
+            padx=24, pady=12, wraplength=int(self.BG_WIDTH * 0.9), justify=tk.CENTER,
+        )
+
         # Live mic-input level meter.
         self._setup_level_meter()
 
@@ -686,6 +693,16 @@ class BotGUI:
                 self.overlay_label.place_forget()
         self.master.after(0, _update)
 
+    def show_confirm_banner(self, text):
+        """Show a large on-screen banner (the heard name/company) to confirm."""
+        def _update():
+            self.confirm_label.config(text=text)
+            self.confirm_label.place(relx=0.5, rely=0.7, anchor=tk.CENTER)
+        self.master.after(0, _update)
+
+    def clear_confirm_banner(self):
+        self.master.after(0, self.confirm_label.place_forget)
+
     def append_to_text(self, text, newline=True):
         def _update():
             self.response_text.config(state=tk.NORMAL)
@@ -805,6 +822,16 @@ class BotGUI:
                 continue
 
             result = flow.handle(user_text)
+
+            # Show the heard name/company on screen so the visitor can read it
+            # while confirming; clear it on any other step.
+            if result.state == FlowState.AWAITING_VISITOR_NAME_CONFIRM:
+                self.show_confirm_banner(flow.visitor_name)
+            elif result.state == FlowState.AWAITING_COMPANY_CONFIRM:
+                self.show_confirm_banner(flow.visitor_company)
+            else:
+                self.clear_confirm_banner()
+
             self.set_state(BotStates.SPEAKING, "Speaking...")
             self._enqueue_speech(result.say)
 
@@ -817,6 +844,7 @@ class BotGUI:
                 time.sleep(ON_THEIR_WAY_DISPLAY_S)
                 break
 
+        self.clear_confirm_banner()
         self.wait_for_tts()
 
     # =========================================================================
